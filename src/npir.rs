@@ -1,6 +1,6 @@
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use crate::{ntrurp::*, poly::*, params::*, number_theory::*, arith::*};
+use crate::{ntrurp::*, poly::*, params::*, number_theory::*};
 use std::time::Instant;
 
 
@@ -11,6 +11,7 @@ pub struct Npir<'a> {
     n1: u64,
     drows: usize,
     dcols: usize,
+    y_constants: Vec<PolyMatrixNTT<'a>>,
 }
 pub fn randomdb<'a>(params: &'a Params, db: &mut PolyMatrixNTT<'a>) {
     let mut rng = ChaCha20Rng::from_entropy();
@@ -30,6 +31,7 @@ pub fn randomdb<'a>(params: &'a Params, db: &mut PolyMatrixNTT<'a>) {
 
 impl<'a> Npir<'a> {
     pub fn new(ntru_params: &'a Params) -> Npir<'a> {
+        let init = Instant::now();
         let ntrurp = NtruRp::new(ntru_params);
         let pt = ntru_params.pt_modulus as f64;
         let log_p = pt.log2() as usize;
@@ -37,11 +39,12 @@ impl<'a> Npir<'a> {
         let dcols = 1 << cols as usize;
         let drows = ntru_params.poly_len;
         let mut db = PolyMatrixNTT::zero(ntru_params, ntru_params.poly_len, dcols);
-        randomdb(ntru_params, &mut db);
         let n1 = invert_uint_mod(ntru_params.poly_len as u64, ntru_params.modulus).unwrap();
-
+        let y_constants = generate_y_constants(&ntru_params);
+        println!("Init time: {} microseconds", init.elapsed().as_micros());
+        randomdb(ntru_params, &mut db);
         Npir {
-            ntru_params, ntrurp, db, n1, drows, dcols,
+            ntru_params, ntrurp, db, n1, drows, dcols, y_constants,
         }
     }
 
@@ -49,62 +52,52 @@ impl<'a> Npir<'a> {
         let dimension = self.ntru_params.poly_len;
         let alpha = index_c / dimension;
         let beta = index_c % dimension;
-        let mut query_raw = PolyMatrixRaw::zero(self.ntru_params, self.dcols, 1);
+        let mut query = PolyMatrixNTT::zero(self.ntru_params, self.dcols, 1);
         let delta = self.ntrurp.delta_q();
         let modulus_delta = self.ntru_params.modulus - delta;
-
+        let n1 = self.n1;
         for i in 0..self.dcols {
             let ct = if i == alpha {
                 let mut pt = PolyMatrixRaw::zero(self.ntru_params, 1, 1);
                 let val = if beta == 0 { delta } else { modulus_delta };
                 let beta = if beta == 0 { beta } else { dimension - beta };
                 pt.get_poly_mut(0, 0)[beta] = val;
-                self.ntrurp.encryptpoly(pt)
+                self.ntrurp.encryptpoly(pt, n1.try_into().unwrap())
             } else {
-                self.ntrurp.encrypt(0)
+                self.ntrurp.encrypt(0, n1.try_into().unwrap())
             };
-            query_raw.get_poly_mut(i, 0).copy_from_slice(ct.get_poly(0, 0));
+            query.get_poly_mut(i, 0).copy_from_slice(ct.get_poly(0, 0));
         }
-        let query = to_ntt_alloc(&query_raw);
         query
     }
 
     pub fn answer(&self, query: PolyMatrixNTT<'_>) -> PolyMatrixRaw<'_> {
         // let start1 = Instant::now();
-        let modulus = self.ntru_params.modulus;
         let dimension = self.ntru_params.poly_len;
         let mut db_processed = PolyMatrixNTT::zero(&self.ntru_params, dimension, 1);
-        let n1 = self.n1;
+        let mut db_pack = Vec::new();
 
         multiply(&mut db_processed, &self.db, &query);
-        let mut db_raw = from_ntt_alloc(&db_processed);
-        // let duration1 = start1.elapsed();
-        // let micros1 = duration1.as_micros();
-        
-        // let start2 = Instant::now();
-        for i in 0..dimension {
-            for j in 0..dimension {
-                let data = db_raw.get_poly(i, 0)[j] as u64;
-                db_raw.get_poly_mut(i, 0)[j] = multiply_uint_mod(data, n1, modulus);
-            }
+        for i in 0..db_processed.rows{
+            db_pack.push(db_processed.submatrix(i, 0, 1, 1));
         }
-        // let duration2 = start2.elapsed();
-        // let micros2 = duration2.as_micros();
+        // println!("simplePIR cost time: {}", start1.elapsed().as_micros());
         
         // let start3 = Instant::now();
-        let rho = self.ntrurp.ringpack(self.ntru_params.poly_len_log2, 0, &db_raw); 
-        let ans = self.ntrurp.modreduction(rho);
-        // let duration3 = start3.elapsed();
-        // let micros3 = duration3.as_micros();
-        // let total = (micros1 + micros2 + micros3) as f64;
-        // println!("Database-query multiplication costs time: {} %", micros1 as f64/ total);
-        // println!("Factorial multiplication costs time: {} %", micros2 as f64/ total);
-        // println!("Packing and modreduction cost time: {} %", micros3 as f64/ total);
+        let rho = self.ntrurp.ringpack(
+            self.ntru_params.poly_len_log2, 
+            0, 
+            &db_pack, 
+            &self.y_constants);
+        let rho_raw = from_ntt_alloc(&rho);
+        let ans = self.ntrurp.modreduction(rho_raw);
+        // println!("Packing cost time: {}", start3.elapsed().as_micros());
         ans
     }
 
     pub fn recovery(&self, index_r: usize, ans: PolyMatrixRaw<'_>) -> u64 {
-        let b = self.ntrurp.decryptrp(ans);
+        let ans_ntt = to_ntt_alloc(&ans);
+        let b = self.ntrurp.decryptrp(ans_ntt);
         return b.get_poly(0, 0)[index_r]
     }
 }
@@ -124,6 +117,7 @@ mod tests {
             33,);
         println!("Generate the database with size 2^{} ...", ntru_params.db_size_log); 
         let npir = Npir::new(&ntru_params);
+
         println!("The database has {} rows and {} cols.", ntru_params.poly_len, npir.dcols); 
         let dimension = ntru_params.poly_len;
         let mut rng = ChaCha20Rng::from_entropy();
@@ -147,6 +141,6 @@ mod tests {
             assert_eq!(b, db_raw.get_poly(index_r, index_c / dimension)[index_c % dimension]);
             println!("Extract the data {} from the database!", b);
         }
-        println!("Server ave time: {} microseconds", micro_total / 20);
+        println!("Server ave time: {} microseconds", micro_total / 5);
     }
 }

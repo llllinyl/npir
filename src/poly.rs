@@ -538,6 +538,7 @@ pub fn add_raw(res: &mut PolyMatrixRaw, a: &PolyMatrixRaw, b: &PolyMatrixRaw) {
     }
 }
 
+
 pub fn add_into(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT) {
     assert!(res.rows == a.rows);
     assert!(res.cols == a.cols);
