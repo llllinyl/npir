@@ -15,11 +15,11 @@ pub fn calc_index(indices: &[usize], lengths: &[usize]) -> usize {
 
 pub fn get_test_params() -> Params {
     Params::init(2048, 
-        &[65537, 1004535809], 
+        &[786433, 1004535809], 
         2.05, 
         1,
         64, 
-        12,
+        3,
         33,)
 }
 

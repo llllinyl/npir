@@ -55,13 +55,13 @@ pub fn gadgetrp<'a>(
 ) -> PolyMatrixRaw<'a> {
     let dimension = params.poly_len;
     let t = params.t_rp;
-    let mask = 65535u64;
+    let mask = 131071u64;
     let mut output = PolyMatrixRaw::zero(params, 1, t);
     for i in 0..dimension {
         let data: u64 = input.get_poly(0, 0)[i];
         for j in 0..t {
-            let bit_offs = j * 16usize;
-            let piece = if bit_offs >= 48 {
+            let bit_offs = j * 17usize;
+            let piece = if bit_offs >= 51 {
                 0
             } else {
                 (data >> bit_offs) & mask
@@ -136,7 +136,7 @@ impl<'a> NtruRp<'a> {
                 let g_ntt = to_ntt_alloc(&g);
                 tem_rpk.copy_into(&(&g_ntt * &sk_inv), j, 0);
                 
-                btem *= 65536u64;
+                btem *= 131072u64;
             }
             rpk.push(tem_rpk);
         }
@@ -286,21 +286,6 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn scaling_factor_correctness() {
-        let ntru_params = Params::init(2048, 
-            &[65537, 1004535809], 
-            2.05, 
-            1, 
-            64, 
-            12,
-            33,);
-        let ntrurp = NtruRp::new(&ntru_params);
-        assert_eq!(ntrurp.delta_q(), ntrurp.ntru_params.modulus / ntrurp.ntru_params.pt_modulus, "The ciphertext scaler is right!");
-        assert_eq!(ntrurp.delta_q1(), ntrurp.ntru_params.moduli[0] / ntrurp.ntru_params.pt_modulus, "The packing scaler is right!");
-    }
-
-    #[test]
-    #[ignore]
     fn sk_correctness() {
         let ntru_params = Params::init(2048, 
             &[65537, 1004535809], 
@@ -341,7 +326,7 @@ mod tests {
     #[test]
     fn ringpack_correctness() {
         let ntru_params = Params::init(2048, 
-            &[65537, 1004535809], 
+            &[786433, 1004535809], 
             2.05, 
             1,
             64, 

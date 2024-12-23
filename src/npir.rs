@@ -89,9 +89,10 @@ impl<'a> Npir<'a> {
             0, 
             &db_pack, 
             &self.y_constants);
+        // println!("Packing cost time: {}", start3.elapsed().as_micros());
         let rho_raw = from_ntt_alloc(&rho);
         let ans = self.ntrurp.modreduction(rho_raw);
-        // println!("Packing cost time: {}", start3.elapsed().as_micros());
+        // println!("Second part cost time: {}", start3.elapsed().as_micros());
         ans
     }
 
@@ -109,7 +110,7 @@ mod tests {
     #[test]
     fn pir_correctness() {
         let ntru_params = Params::init(2048, 
-            &[65537, 1004535809], 
+            &[786433, 1004535809], 
             2.05, 
             1,
             512, 
