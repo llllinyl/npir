@@ -373,7 +373,7 @@ mod tests {
         let n1 = invert_uint_mod(dimension.try_into().unwrap(), modulus).unwrap();
         let mut rng = ChaCha20Rng::from_entropy();
         let mut micros1 = 0;
-        for _t in 0..5{
+        for _t in 0..6{
             let mut vec: Vec<u64> = vec![0; dimension as usize];
             let mut ctrp = Vec::new();
             for i in 0..dimension {
@@ -421,7 +421,7 @@ mod tests {
         let n1 = invert_uint_mod(dimension.try_into().unwrap(), modulus).unwrap();
         let mut rng = ChaCha20Rng::from_entropy();
         let mut micros1 = 0;
-        for _t in 0..5{
+        for _t in 0..6{
             let mut vec: Vec<u64> = vec![0; dimension as usize];
             let mut ctrp = Vec::new();
             for i in 0..dimension {
