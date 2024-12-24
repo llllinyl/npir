@@ -9,7 +9,7 @@ To build and run this code, we need some environmental needs and adjustments.
 2. Our code is under C++ and Rust, so we need to install C++ compiler and Rust compiler. In particular, we will use to `sudo apt install g++` install g++ and `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh` to install Rust.
 3. We need to install `ntl-11.5.1` and `libgmp3-dev` to compile the C++ code. 
     * First, we can run `sudo apt install libgmp3-dev` to install `gmp-6.2.1`. If it fails, go to the official website [gmp-6.2.1](https://gmplib.org) to download `gmp-6.2.1`. Unzip the file and open it. Then enter `./configure`, `make`, `make check` and `sudo make install`.
-    + Then we can go to the official website [ntl-11.5.1](https://libntl.org/download.html) to download `ntl-11.5.1`. Unzip the file and open it. Then enter `./configure`, `make`, `make check` and `sudo make install`.
+    + Then we can go to the official website [ntl-11.5.1](https://libntl.org/download.html) to download `ntl-11.5.1`. Unzip the file and open it. Then enter `./configure NTL_GMP_LIP=on CXXFLAGS='-fPIC -O2'`, `make`, `make check` and `sudo make install`.
 4. We need to adjust the path in `build.rs` and change it to the local path of the current host.
 
 ## Run
