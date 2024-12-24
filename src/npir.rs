@@ -1,6 +1,6 @@
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use crate::{ntrurp::*, poly::*, params::*, number_theory::*};
+use crate::{ntrupacking::*, poly::*, params::*, number_theory::*};
 use std::time::Instant;
 
 
