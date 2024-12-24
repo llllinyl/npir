@@ -390,7 +390,10 @@ mod tests {
             println!("Begin to packing...");
             let start1 = Instant::now();
             let rho = ntrurp.packing(ntrurp.ntru_params.poly_len_log2, 0, &ctrp, &y_constants); 
-            micros1 +=  start1.elapsed().as_micros();
+            if _t != 0 {
+                micros1 +=  start1.elapsed().as_micros();
+            }
+            // micros1 +=  start1.elapsed().as_micros();
             let rho_raw = from_ntt_alloc(&rho);
             let modrho = ntrurp.modreduction(rho_raw);
             let b = ntrurp.decryptrp(to_ntt_alloc(&modrho));
@@ -435,7 +438,10 @@ mod tests {
             println!("Begin to packing...");
             let start1 = Instant::now();
             let rho = ntrurp.packing_for(ntrurp.ntru_params.poly_len_log2, &ctrp, &y_constants); 
-            micros1 +=  start1.elapsed().as_micros();
+            if _t != 0 {
+                micros1 +=  start1.elapsed().as_micros();
+            }
+            // micros1 +=  start1.elapsed().as_micros();
             let rho_raw = from_ntt_alloc(&rho);
             let modrho = ntrurp.modreduction(rho_raw);
             let b = ntrurp.decryptrp(to_ntt_alloc(&modrho));
