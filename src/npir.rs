@@ -123,7 +123,7 @@ mod tests {
         let dimension = ntru_params.poly_len;
         let mut rng = ChaCha20Rng::from_entropy();
         let mut micro_total = 0;
-        for _t in 0..5 {
+        for _t in 0..6 {
             let index_r = rng.gen::<usize>() % ntru_params.poly_len;
             let index_c = rng.gen::<usize>() % (ntru_params.poly_len * npir.dcols);
             println!("Query the data at {}, {} ...", index_r, index_c);
@@ -144,6 +144,6 @@ mod tests {
             assert_eq!(b, db_raw.get_poly(index_r, index_c / dimension)[index_c % dimension]);
             println!("Extract the data {} from the database!", b);
         }
-        println!("Server ave time: {} microseconds", micro_total / 4);
+        println!("Server ave time: {} microseconds", micro_total / 5);
     }
 }
