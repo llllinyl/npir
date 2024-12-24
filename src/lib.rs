@@ -7,5 +7,5 @@ pub mod ntt;
 pub mod params;
 pub mod poly;
 
-pub mod ntrurp;
+pub mod ntrupacking;
 pub mod npir;
