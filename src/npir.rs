@@ -134,7 +134,9 @@ mod tests {
             let ans = npir.answer(query);
             let duration1 = start1.elapsed();
             let micros1 = duration1.as_micros();
-            micro_total += micros1;
+            if _t != 0 {
+                micro_total += micros1;
+            }
             println!("Server time: {} microseconds", micros1);
 
             let b = npir.recovery(index_r, ans);
@@ -142,6 +144,6 @@ mod tests {
             assert_eq!(b, db_raw.get_poly(index_r, index_c / dimension)[index_c % dimension]);
             println!("Extract the data {} from the database!", b);
         }
-        println!("Server ave time: {} microseconds", micro_total / 5);
+        println!("Server ave time: {} microseconds", micro_total / 4);
     }
 }
