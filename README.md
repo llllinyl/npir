@@ -1,6 +1,6 @@
 # NPIR
 
-This is an Rust implementation of the NPIR scheme, a high-throughput NTRU-based single-server PIR scheme, introduiced in "".
+This is an Rust implementation of the NPIR scheme, a high-throughput NTRU-based single-server PIR scheme, introduiced in "\textsf{NPIR}: High-Throughput Single-Server PIR for Dynamic Database".
 
 ## Build
 To build and run this code, we need some environmental needs and adjustments.
