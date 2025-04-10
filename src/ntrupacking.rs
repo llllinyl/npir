@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use std::time::Instant;
 
 extern "C"{
-    pub fn get_sk(sk: &mut Vec<i64>, sk_inv: &mut Vec<i64>, Q: c_long, N: c_int);
+    pub fn get_sk(sk: *mut i64, sk_inv: *mut i64, Q: c_long, N: c_int);
 }
 
 pub fn generate_y_constants<'a>(
@@ -104,10 +104,10 @@ impl<'a> NtruRp<'a> {
         let modulus = ntru_params.modulus;
         let mut tem_sk = PolyMatrixRaw::zero(ntru_params, 1, 1);
         let mut tem_skinv = PolyMatrixRaw::zero(ntru_params, 1, 1);
-        let mut vec: Vec<i64> = vec![0; dimension as usize];
-        let mut vec_inv: Vec<i64> = vec![0; dimension as usize];
-        unsafe {    
-            get_sk(&mut vec, &mut vec_inv, modulus as c_long, dimension as c_int);
+        let mut vec = vec![0i64; dimension as usize];
+        let mut vec_inv = vec![0i64; dimension as usize];
+        unsafe {
+            get_sk(vec.as_mut_ptr(), vec_inv.as_mut_ptr(), modulus as c_long, dimension as c_int);
         }
         for i in 0..dimension as usize {
             tem_sk.get_poly_mut(0, 0)[i] = vec[i] as u64 % modulus;
