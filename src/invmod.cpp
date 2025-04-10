@@ -9,9 +9,8 @@ using namespace std;
 using namespace NTL;
 
 extern "C" {
-    void get_sk(vector<long>& vec, vector<long>& vec_inv, long Q, int N)
+    void get_sk(long* vec, long* vec_inv, long Q, int N)
     {
-        vec = vector<long>(N, 0); vec_inv = vector<long>(N, 0);
         ZZ_p::init(ZZ(Q));
         ZZ_pX poly, inv_poly, modulus;
         poly = inv_poly = modulus = 0;
