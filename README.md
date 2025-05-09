@@ -11,6 +11,7 @@ To build and run this code, we need some environmental needs and adjustments.
     * First, we can run `sudo apt install libgmp3-dev` to install `gmp-6.2.1`. If it fails, go to the official website [gmp-6.2.1](https://gmplib.org) to download `gmp-6.2.1`. Unzip the file and open it. Then enter `./configure`, `make`, `make check` and `sudo make install`.
     + Then we can go to the official website [ntl-11.5.1](https://libntl.org/download.html) to download `ntl-11.5.1`. Unzip the file and open it. Then enter `./configure NTL_GMP_LIP=on CXXFLAGS='-fPIC -O2'`, `make`, `make check` and `sudo make install`.
 4. We need to adjust the path in `build.rs` and change it to the local path of the current host.
+5. Our implementation requires the environment to support AVX2.
 
 ## Run
 After building the code, we can run the following command to run the test:
