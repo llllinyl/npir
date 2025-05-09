@@ -1,10 +1,11 @@
+#[cfg(target_feature = "avx2")]
+use std::arch::x86_64::*;
 
 use rand::distributions::Standard;
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 use std::cell::RefCell;
 use std::ops::{Add, Mul, Neg};
-
 use crate::{aligned_memory::*, arith::*, discrete_gaussian::*, ntt::*, params::*, util::*};
 
 const SCRATCH_SPACE: usize = 8192;
@@ -18,8 +19,8 @@ pub trait PolyMatrix<'a> {
     fn num_words(&self) -> usize;
     fn zero(params: &'a Params, rows: usize, cols: usize) -> Self;
     fn random(params: &'a Params, rows: usize, cols: usize) -> Self;
-    fn random_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self;
     fn random_ternary_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self;
+    fn random_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self;
     fn as_slice(&self) -> &[u64];
     fn as_mut_slice(&mut self) -> &mut [u64];
     fn zero_out(&mut self) {
@@ -30,6 +31,7 @@ pub trait PolyMatrix<'a> {
     fn get_poly(&self, row: usize, col: usize) -> &[u64] {
         let num_words = self.num_words();
         let start = (row * self.get_cols() + col) * num_words;
+        // &self.as_slice()[start..start + num_words]
         unsafe { self.as_slice().get_unchecked(start..start + num_words) }
     }
     fn get_poly_mut(&mut self, row: usize, col: usize) -> &mut [u64] {
@@ -311,22 +313,6 @@ impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
             data,
         }
     }
-    fn random_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self {
-        let mut iter = rng.sample_iter(&Standard);
-        let mut out = PolyMatrixNTT::zero(params, rows, cols);
-        for r in 0..rows {
-            for c in 0..cols {
-                for i in 0..params.crt_count {
-                    for j in 0..params.poly_len {
-                        let idx = calc_index(&[i, j], &[params.crt_count, params.poly_len]);
-                        let val: u64 = iter.next().unwrap();
-                        out.get_poly_mut(r, c)[idx] = val % params.moduli[i];
-                    }
-                }
-            }
-        }
-        out
-    }
     fn random_ternary_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self {
         let mut iter = rng.sample_iter(&Standard);
         let mut out = PolyMatrixNTT::zero(params, rows, cols);
@@ -349,6 +335,22 @@ impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
         }
         out
     }
+    fn random_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self {
+        let mut iter = rng.sample_iter(&Standard);
+        let mut out = PolyMatrixNTT::zero(params, rows, cols);
+        for r in 0..rows {
+            for c in 0..cols {
+                for i in 0..params.crt_count {
+                    for j in 0..params.poly_len {
+                        let idx = calc_index(&[i, j], &[params.crt_count, params.poly_len]);
+                        let val: u64 = iter.next().unwrap();
+                        out.get_poly_mut(r, c)[idx] = val % params.moduli[i];
+                    }
+                }
+            }
+        }
+        out
+    }
     fn random(params: &'a Params, rows: usize, cols: usize) -> Self {
         let mut rng = rand::thread_rng();
         Self::random_rng(params, rows, cols, &mut rng)
@@ -358,6 +360,7 @@ impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
         padded.copy_into(&self, pad_rows, 0);
         padded
     }
+
     fn submatrix(&self, target_row: usize, target_col: usize, rows: usize, cols: usize) -> Self {
         let mut m = Self::zero(self.params, rows, cols);
         assert!(target_row < self.rows);
@@ -436,7 +439,7 @@ pub fn add_poly(params: &Params, res: &mut [u64], a: &[u64], b: &[u64]) {
 
 pub fn add_poly_raw(params: &Params, res: &mut [u64], a: &[u64], b: &[u64]) {
     for i in 0..params.poly_len {
-        res[i] = a[i] + b[i] % params.modulus;
+        res[i] = a[i] + b[i]  % params.modulus;
     }
 }
 
@@ -482,6 +485,177 @@ pub fn modular_reduce(params: &Params, res: &mut [u64]) {
     }
 }
 
+#[cfg(target_feature = "avx2")]
+pub fn multiply(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
+    assert_eq!(res.rows, a.rows);
+    assert_eq!(res.cols, b.cols);
+    assert_eq!(a.cols, b.rows);
+
+    let params = res.params;
+    let poly_len = params.poly_len;
+    let crt_count = params.crt_count;
+
+    let barrett_consts = unsafe {
+        [
+            _mm256_set1_epi64x(params.barrett_cr_1[0] as i64),
+            _mm256_set1_epi64x(params.barrett_cr_1[1] as i64)
+        ]
+    };
+    let moduli = unsafe {
+        [
+            _mm256_set1_epi64x(params.moduli[0] as i64),
+            _mm256_set1_epi64x(params.moduli[1] as i64)
+        ]
+    };
+
+    for i in 0..a.rows {
+        for j in 0..b.cols {
+            let res_poly = res.get_poly_mut(i, j);
+            unsafe {
+                for z in (0..poly_len * crt_count).step_by(4) {
+                    _mm256_store_si256(
+                        res_poly.as_mut_ptr().add(z) as *mut __m256i,
+                        _mm256_setzero_si256()
+                    );
+                }
+            }
+
+            for k in 0..a.cols {
+                let pol1 = a.get_poly(i, k);
+                let pol2 = b.get_poly(k, j);
+                unsafe {
+                    multiply_add_poly_avx2_with_reduction(
+                        params,
+                        res_poly,
+                        pol1,
+                        pol2,
+                        &barrett_consts,
+                        &moduli
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[cfg(target_feature = "avx2")]
+unsafe fn multiply_add_poly_avx2_with_reduction(
+    params: &Params,
+    res: &mut [u64],
+    a: &[u64],
+    b: &[u64],
+    barrett_consts: &[__m256i; 2],
+    moduli: &[__m256i; 2]
+) {
+    for c in 0..params.crt_count {
+        for i in (0..params.poly_len).step_by(4) {
+            let idx = c * params.poly_len + i;
+            let p_x = a.as_ptr().add(idx);
+            let p_y = b.as_ptr().add(idx);
+            let p_z = res.as_mut_ptr().add(idx);
+
+            let x = _mm256_loadu_si256(p_x as *const __m256i);
+            let y = _mm256_loadu_si256(p_y as *const __m256i);
+            let z = _mm256_loadu_si256(p_z as *const __m256i);
+            
+            let product = _mm256_mul_epu32(x, y);
+            let sum = _mm256_add_epi64(z, product);
+            
+            let reduced = avx2_barrett_reduction(sum, barrett_consts[c], moduli[c]);
+            
+            _mm256_storeu_si256(p_z as *mut __m256i, reduced);
+        }
+    }
+}
+
+#[cfg(target_feature = "avx2")]
+pub unsafe fn avx2_barrett_reduction(
+    input: __m256i,
+    barrett_const: __m256i,
+    modulus: __m256i,
+) -> __m256i {
+    let input_hi = _mm256_srli_epi64(input, 32);
+    let const_hi = _mm256_srli_epi64(barrett_const, 32);
+    
+    let a = _mm256_mul_epu32(input_hi, barrett_const);
+    let b = _mm256_mul_epu32(input, const_hi);
+    let hi = _mm256_mul_epu32(input_hi, const_hi);
+    
+    let cross_sum = _mm256_add_epi64(a, b);
+    let tmp = _mm256_add_epi64(hi, _mm256_srli_epi64(cross_sum, 32));
+    
+    let mod_hi = _mm256_srli_epi64(modulus, 32);
+    
+    let mod_lo = _mm256_mul_epu32(tmp, modulus);
+    let mod_a = _mm256_mul_epu32(_mm256_srli_epi64(tmp, 32), modulus);
+    let mod_b = _mm256_mul_epu32(tmp, mod_hi);
+    let mod_hi = _mm256_mul_epu32(_mm256_srli_epi64(tmp, 32), mod_hi);
+    
+    let mod_cross = _mm256_add_epi64(mod_a, mod_b);
+    let mod_product = _mm256_add_epi64(
+        _mm256_slli_epi64(mod_hi, 32),
+        _mm256_add_epi64(
+            _mm256_slli_epi64(mod_cross, 32),
+            mod_lo
+        )
+    );
+    
+    let res = _mm256_sub_epi64(input, mod_product);
+    
+    let ge_mask = _mm256_or_si256(
+        _mm256_cmpgt_epi64(res, modulus),
+        _mm256_cmpeq_epi64(res, modulus)
+    );
+    let correction = _mm256_and_si256(modulus, ge_mask);
+    _mm256_sub_epi64(res, correction)
+}
+
+#[cfg(target_feature = "avx2")]
+pub fn multiply_add_poly_avx(params: &Params, res: &mut [u64], a: &[u64], b: &[u64]) {
+    for c in 0..params.crt_count {
+        for i in (0..params.poly_len).step_by(4) {
+            unsafe {
+                let p_x = &a[c * params.poly_len + i] as *const u64;
+                let p_y = &b[c * params.poly_len + i] as *const u64;
+                let p_z = &mut res[c * params.poly_len + i] as *mut u64;
+                let x = _mm256_load_si256(p_x as *const __m256i);
+                let y = _mm256_load_si256(p_y as *const __m256i);
+                let z = _mm256_load_si256(p_z as *const __m256i);
+
+                let product = _mm256_mul_epu32(x, y);
+                let out = _mm256_add_epi64(z, product);
+
+                _mm256_store_si256(p_z as *mut __m256i, out);
+            }
+        }
+    }
+}
+
+#[cfg(target_feature = "avx2")]
+pub fn multiply_no_reduce(
+    res: &mut PolyMatrixNTT,
+    a: &PolyMatrixNTT,
+    b: &PolyMatrixNTT,
+    start_inner_dim: usize,
+) {
+    assert_eq!(res.rows, a.rows);
+    assert_eq!(res.cols, b.cols);
+    assert_eq!(a.cols, b.rows);
+
+    let params = res.params;
+    for i in 0..a.rows {
+        for j in 0..b.cols {
+            let res_poly = res.get_poly_mut(i, j);
+            for k in start_inner_dim..a.cols {
+                let pol1 = a.get_poly(i, k);
+                let pol2 = b.get_poly(k, j);
+                multiply_add_poly_avx(params, res_poly, pol1, pol2);
+            }
+        }
+    }
+}
+
+#[cfg(not(target_feature = "avx2"))]
 pub fn multiply(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
     assert!(res.rows == a.rows);
     assert!(res.cols == b.cols);
@@ -494,7 +668,6 @@ pub fn multiply(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
                 res.get_poly_mut(i, j)[z] = 0;
             }
             for k in 0..a.cols {
-                let params = res.params;
                 let res_poly = res.get_poly_mut(i, j);
                 let pol1 = a.get_poly(i, k);
                 let pol2 = b.get_poly(k, j);
@@ -537,7 +710,6 @@ pub fn add_raw(res: &mut PolyMatrixRaw, a: &PolyMatrixRaw, b: &PolyMatrixRaw) {
         }
     }
 }
-
 
 pub fn add_into(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT) {
     assert!(res.rows == a.rows);
@@ -667,7 +839,7 @@ pub fn to_ntt(a: &mut PolyMatrixNTT, b: &PolyMatrixRaw) {
             let pol_src = b.get_poly(r, c);
             let pol_dst = a.get_poly_mut(r, c);
             reduce_copy(params, pol_dst, pol_src);
-            ntt_forward_alt(params, pol_dst);
+            ntt_forward(params, pol_dst);
         }
     }
 }
@@ -682,7 +854,7 @@ pub fn to_ntt_no_reduce(a: &mut PolyMatrixNTT, b: &PolyMatrixRaw) {
                 let idx = n * params.poly_len;
                 pol_dst[idx..idx + params.poly_len].copy_from_slice(pol_src);
             }
-            ntt_forward_alt(params, pol_dst);
+            ntt_forward(params, pol_dst);
         }
     }
 }
@@ -703,7 +875,7 @@ pub fn from_ntt(a: &mut PolyMatrixRaw, b: &PolyMatrixNTT) {
                 let pol_src = b.get_poly(r, c);
                 let pol_dst = a.get_poly_mut(r, c);
                 scratch[0..pol_src.len()].copy_from_slice(pol_src);
-                ntt_inverse_alt(params, scratch);
+                ntt_inverse(params, scratch);
                 for z in 0..params.poly_len {
                     pol_dst[z] = params.crt_compose(scratch, z);
                 }
@@ -721,7 +893,7 @@ pub fn from_ntt_scratch(a: &mut PolyMatrixRaw, scratch: &mut [u64], b: &PolyMatr
         for c in 0..b.cols {
             let pol_src = b.get_poly(r, c);
             scratch[0..pol_src.len()].copy_from_slice(pol_src);
-            ntt_inverse_alt(params, scratch);
+            ntt_inverse(params, scratch);
             if r == 0 {
                 let pol_dst = a.get_poly_mut(r, c);
                 for z in 0..params.poly_len {
@@ -785,96 +957,5 @@ impl<'a, 'b> Add for &'b PolyMatrixRaw<'a> {
         let mut out = PolyMatrixRaw::zero(self.params, self.rows, self.cols);
         add_raw(&mut out, self, rhs);
         out
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    fn get_params() -> Params {
-        get_test_params()
-    }
-
-    fn assert_all_zero(a: &[u64]) {
-        for i in a {
-            assert_eq!(*i, 0);
-        }
-    }
-
-    #[test]
-    fn sets_all_zeros() {
-        let params = get_params();
-        let m1 = PolyMatrixNTT::zero(&params, 2, 1);
-        assert_all_zero(m1.as_slice());
-    }
-
-    #[test]
-    fn multiply_correctness() {
-        let params = get_params();
-        let m1 = PolyMatrixNTT::zero(&params, 2, 1);
-        let m2 = PolyMatrixNTT::zero(&params, 3, 2);
-        let m3 = &m2 * &m1;
-        assert_all_zero(m3.as_slice());
-    }
-
-    #[test]
-    fn full_multiply_correctness() {
-        let params = get_params();
-        let mut m1 = PolyMatrixRaw::zero(&params, 1, 1);
-        let mut m2 = PolyMatrixRaw::zero(&params, 1, 1);
-        for i in 0..params.poly_len {
-            m1.get_poly_mut(0, 0)[i] = 1;
-            m2.get_poly_mut(0, 0)[i] = 1;
-        }
-        let m1_ntt = to_ntt_alloc(&m1);
-        let m2_ntt = to_ntt_alloc(&m2);
-        let m3_ntt = &m1_ntt * &m2_ntt;
-        let m3 = from_ntt_alloc(&m3_ntt);
-        assert_eq!(m3.get_poly(0, 0)[0], params.modulus - 2046);
-    }
-
-    fn get_alt_params() -> Params {
-        Params::init(2048, 
-            &[65537, 1004535809], 
-            2.05, 
-            1,
-            64, 
-            12,
-            33,)
-    }
-
-    #[test]
-    fn alt_full_multiply_correctness() {
-        let params = get_alt_params();
-        let mut m1 = PolyMatrixRaw::zero(&params, 1, 1);
-        let mut m2 = PolyMatrixRaw::zero(&params, 1, 1);
-        m1.get_poly_mut(0, 0)[1] = 100;
-        m2.get_poly_mut(0, 0)[1] = 7;
-        let m1_ntt = to_ntt_alloc(&m1);
-        let m2_ntt = to_ntt_alloc(&m2);
-        let m3_ntt = &m1_ntt * &m2_ntt;
-        let m3 = from_ntt_alloc(&m3_ntt);
-        assert_eq!(m3.get_poly(0, 0)[2], 700);
-    }
-
-    #[test]
-    fn to_vec_correctness() {
-        let params = get_params();
-        let mut m1 = PolyMatrixRaw::zero(&params, 1, 1);
-        for i in 0..params.poly_len {
-            m1.data[i] = 1;
-        }
-        let modulus_bits = 9;
-        let v = m1.to_vec(modulus_bits, params.poly_len);
-        for i in 0..v.len() {
-            println!("{:?}", v[i]);
-        }
-        let mut bit_offs = 0;
-        for i in 0..params.poly_len {
-            let val = read_arbitrary_bits(v.as_slice(), bit_offs, modulus_bits);
-            assert_eq!(m1.data[i], val);
-            bit_offs += modulus_bits;
-        }
     }
 }

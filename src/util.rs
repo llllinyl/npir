@@ -19,7 +19,6 @@ pub fn get_test_params() -> Params {
         2.05, 
         1,
         64, 
-        3,
         33,)
 }
 

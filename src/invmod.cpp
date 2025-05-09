@@ -11,6 +11,7 @@ using namespace NTL;
 extern "C" {
     void get_sk(long* vec, long* vec_inv, long Q, int N)
     {
+        //vec = vector<long>(N, 0); vec_inv = vector<long>(N, 0);
         ZZ_p::init(ZZ(Q));
         ZZ_pX poly, inv_poly, modulus;
         poly = inv_poly = modulus = 0;
@@ -33,6 +34,8 @@ extern "C" {
                 continue;
             }
         }
+	//cout<<"poly" << poly << endl;
+	//cout <<"int"<<inv_poly<< endl;
         long tmp_coef;
         for (int i = 0; i <= deg(poly); i++)
         {
@@ -40,6 +43,7 @@ extern "C" {
             if( tmp_coef < 0 )
                 tmp_coef += Q;
             vec[i] = tmp_coef;
+	    //cout << vec[i]<<"  ";
         }
         for (int i = 0; i <= deg(inv_poly); i++)
         {
@@ -47,6 +51,7 @@ extern "C" {
             if( tmp_coef < 0 )
                 tmp_coef += Q;
             vec_inv[i] = tmp_coef;
+	    //cout << vec_inv[i] << "  "<< endl;
         }
     }
 }

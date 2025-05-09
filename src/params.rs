@@ -64,7 +64,6 @@ pub struct Params {
 
     pub n: usize,
     pub pt_modulus: u64,
-    pub t_rp: usize,
 
     pub db_size_log: usize,
 }
@@ -109,7 +108,6 @@ impl Params {
         noise_width: f64,
         n: usize,
         pt_modulus: u64,
-        t_rp: usize,
         db_size_log: usize,
     ) -> Self {
         let poly_len_log2 = log2(poly_len as u64) as usize;
@@ -156,8 +154,8 @@ impl Params {
             noise_width,
             n,
             pt_modulus,
-            t_rp,
             db_size_log,
         }
     }
 }
+
