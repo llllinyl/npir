@@ -1,6 +1,6 @@
 # NPIR
 
-This is an Rust implementation of the NPIR scheme, a high-throughput NTRU-based single-server PIR scheme, introduiced in "\textsf{NPIR}: High-Throughput Single-Server PIR for Dynamic Database".
+This is an Rust implementation of the NPIR scheme, introduiced in "\textsf{NPIR}".
 
 ## Build
 To build and run this code, we need some environmental needs and adjustments.
@@ -19,7 +19,8 @@ After building the code, we can run the following command to run the test:
 2. Files can be compiled via `cargo build --release`.
 3. The module `libinvmod.so` needs to be imported before running to invoke `export LD_LIBRARY_PATH={your_path}/npir/src:$LD_LIBRARY_PATH`. It is worth noting that there is a path that needs to be modified here.
 4. If you want to test packing, invoke `RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture ntrupacking`. You can choose between a recursive implementation or a non-recursive implementation in your tests.
-5. If you want to test the NPIR scheme, invoke `RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture npir`. You can manually tweak the parameters and test different data sets in the `npir.rs` file `test` module.
+5. If you want to test the NPIR or NPIR_free scheme, invoke `RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture npirstandard`. You can test different data sets in the `npirstandard.rs` file `test` module.
+6. If you want to test the batch version, invoke `RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture npirbatch`. You can test different data sets in the `npirbatch.rs` file `test` module.
 
 ## Acknowledgements
 We use the [menonsamir/spiral-rs](https://github.com/menonsamir/spiral-rs) library for Spiral as our starting point.
