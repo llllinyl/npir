@@ -551,37 +551,7 @@ pub fn multiply(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
         }
     }
 }
-/*
-#[cfg(target_feature = "avx2")]
-unsafe fn multiply_add_poly_avx2_with_reduction(
-    params: &Params,
-    res: &mut [u64],
-    a: &[u64],
-    b: &[u64],
-    barrett_consts: &[__m256i; 2],
-    moduli: &[__m256i; 2]
-) {
-    for c in 0..params.crt_count {
-        for i in (0..params.poly_len).step_by(4) {
-            let idx = c * params.poly_len + i;
-            let p_x = a.as_ptr().add(idx);
-            let p_y = b.as_ptr().add(idx);
-            let p_z = res.as_mut_ptr().add(idx);
 
-            let x = _mm256_loadu_si256(p_x as *const __m256i);
-            let y = _mm256_loadu_si256(p_y as *const __m256i);
-            let z = _mm256_loadu_si256(p_z as *const __m256i);
-
-            let product = _mm256_mul_epu32(x, y);
-            let sum = _mm256_add_epi64(z, product);
-
-            let reduced = avx2_barrett_reduction(sum, barrett_consts[c], moduli[c]);
-
-            _mm256_storeu_si256(p_z as *mut __m256i, reduced);
-        }
-    }
-}
-*/
 #[cfg(target_feature = "avx2")]
 pub unsafe fn avx2_barrett_reduction(
     input: __m256i,
