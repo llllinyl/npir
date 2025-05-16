@@ -10,4 +10,5 @@ pub mod params;
 pub mod poly;
 
 pub mod ntrupacking;
-pub mod npir;
+pub mod npirstandard;
+pub mod npirbatch;

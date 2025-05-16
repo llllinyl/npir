@@ -524,20 +524,34 @@ pub fn multiply(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
                 let pol1 = a.get_poly(i, k);
                 let pol2 = b.get_poly(k, j);
                 unsafe {
-                    multiply_add_poly_avx2_with_reduction(
-                        params,
-                        res_poly,
-                        pol1,
-                        pol2,
-                        &barrett_consts,
-                        &moduli
-                    );
+                        for c in 0..crt_count {
+                        let c_offset = c * poly_len;
+                        let reduce = 1 << (64 - 2 * params.moduli[c].ilog2() as usize - 3);
+                        for i in (0..poly_len).step_by(4) {
+                            let idx = c_offset + i;
+                            let p_x = pol1.as_ptr().add(idx);
+                            let p_y = pol2.as_ptr().add(idx);
+                            let p_z = res_poly.as_mut_ptr().add(idx);
+
+                            let x = _mm256_loadu_si256(p_x as *const __m256i);
+                            let y = _mm256_loadu_si256(p_y as *const __m256i);
+                            let z = _mm256_loadu_si256(p_z as *const __m256i);
+
+                            let product = _mm256_mul_epu32(x, y);
+                            let mut sum = _mm256_add_epi64(z, product);
+                            
+                            if k % reduce == 0 || k == a.cols - 1 {
+                                sum = avx2_barrett_reduction(sum, barrett_consts[c], moduli[c]);
+                            }
+                            _mm256_storeu_si256(p_z as *mut __m256i, sum);
+                        }
+                    }
                 }
             }
         }
     }
 }
-
+/*
 #[cfg(target_feature = "avx2")]
 unsafe fn multiply_add_poly_avx2_with_reduction(
     params: &Params,
@@ -557,17 +571,17 @@ unsafe fn multiply_add_poly_avx2_with_reduction(
             let x = _mm256_loadu_si256(p_x as *const __m256i);
             let y = _mm256_loadu_si256(p_y as *const __m256i);
             let z = _mm256_loadu_si256(p_z as *const __m256i);
-            
+
             let product = _mm256_mul_epu32(x, y);
             let sum = _mm256_add_epi64(z, product);
-            
+
             let reduced = avx2_barrett_reduction(sum, barrett_consts[c], moduli[c]);
-            
+
             _mm256_storeu_si256(p_z as *mut __m256i, reduced);
         }
     }
 }
-
+*/
 #[cfg(target_feature = "avx2")]
 pub unsafe fn avx2_barrett_reduction(
     input: __m256i,

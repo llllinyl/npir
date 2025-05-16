@@ -180,7 +180,7 @@ impl<'a> Npir<'a> {
             
             for idx in 0..level_size {
                 let current_ct = from_ntt_alloc(&ciphertexts[idx]);
-                let negated_ct = multiply_x_inverse(&self.ntru_params, level_size, current_ct.clone());
+                let negated_ct = multiply_x_inverse(&self.ntru_params, level_size, current_ct);
                 let mut negated_ct_ntt = to_ntt_alloc(&negated_ct);
                 
                 let automorphed_ct = homomorphic_automorph(
@@ -486,7 +486,13 @@ mod tests {
     }
 
     #[test]
-    // #[ignore]
+    //#[ignore]
+    fn npir_128mb_correctness() {
+        npir_test(30);
+    }
+
+    #[test]
+    #[ignore]
     fn npir_256mb_correctness() {
         npir_test(31);
     }
