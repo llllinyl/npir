@@ -388,14 +388,38 @@ mod tests {
 
     #[test]
     //#[ignore]
-    fn batchnpir_256mb_correctness() {
+    fn batchnpir_256mb_8_correctness() {
+        batch_npir_test(31, 8);
+    }
+
+    #[test]
+    //#[ignore]
+    fn batchnpir_256mb_32_correctness() {
         batch_npir_test(31, 32);
+    }
+
+    #[test]
+    //#[ignore]
+    fn batchnpir_256mb_256_correctness() {
+        batch_npir_test(31, 256);
     }
 
 
     #[test]
     #[ignore]
-    fn batchnpir_1gb_correctness() {
+    fn batchnpir_1gb_8_correctness() {
+        batch_npir_test(33, 8);
+    }
+
+    #[test]
+    #[ignore]
+    fn batchnpir_1gb_32_correctness() {
         batch_npir_test(33, 32);
+    }
+
+    #[test]
+    #[ignore]
+    fn batchnpir_1gb_256_correctness() {
+        batch_npir_test(33, 256);
     }
 }
