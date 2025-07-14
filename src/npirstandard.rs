@@ -352,20 +352,22 @@ impl<'a> Npir<'a> {
         answer_blocks
     }
     
-    pub fn recovery(&self, index: usize, answer_blocks: &[PolyMatrixRaw<'_>]) -> u64 {
-        let block_idx = index / self.ntru_params.poly_len;
-        let position_in_block = index % self.ntru_params.poly_len;
+    pub fn recovery(&self, answer_blocks: &[PolyMatrixRaw<'_>]) -> Vec<PolyMatrixRaw<'_>> {
+        let mut data = Vec::with_capacity(self.phi);
 
         let start_time = Instant::now();
-        let target_block = answer_blocks[block_idx].clone();
-        let target_block_ntt = to_ntt_alloc(&target_block);
-        let decrypted_block = self.ntrurp.decryptrp(target_block_ntt);
+        for i in 0..self.phi{
+            let target_block = answer_blocks[i].clone();
+            let target_block_ntt = to_ntt_alloc(&target_block);
+            let decrypted_block = self.ntrurp.decryptrp(target_block_ntt);
+            data.push(decrypted_block);        
+        }
         println!("Data recovery time: {} μs", start_time.elapsed().as_micros());
-
-        decrypted_block.get_poly(0, 0)[position_in_block]
+        data
     }
 }
 
+/*
 pub fn npirfree_test(databaselog: usize) {
     let ntru_params = Params::init(2048, 
         &[23068673, 1004535809], 
@@ -381,9 +383,8 @@ pub fn npirfree_test(databaselog: usize) {
     let mut rng = ChaCha20Rng::from_entropy();
     let mut micro_total = 0;
     for _t in 0..6 {
-        let index_r = rng.gen::<usize>() % npir.drows;
         let index_c = rng.gen::<usize>() % (ntru_params.poly_len * npir.ell);
-        println!("Query the data at {}, {} ...", index_r, index_c);
+        println!("Query the data at {}-th column ...", index_c);
         let query = npir.query(index_c);
 
         println!("Server computes the answer ...");
@@ -396,14 +397,18 @@ pub fn npirfree_test(databaselog: usize) {
         }
         println!("Server time: {} μs", micros1);
 
-        let b = npir.recovery(index_r, &ans);
-        let db_raw = from_ntt_alloc(&npir.db);
-        assert_eq!(b, db_raw.get_poly(index_r, index_c / dimension)[index_c % dimension]);
-        println!("Extract the data {} from the database!", b);
+        let b = npir.recovery(&ans);
+        for i in 0..1 {
+            for j in 0..dimension{
+                assert_eq!(b[i].get_poly(0, 0)[j], npir.db_raw.get_poly(i * dimension + j, index_c / dimension)[index_c % dimension]);
+            }
+        }
+        println!("Extract correctly!");
         println!("########################################################################################");
     }
     println!("Server ave time: {} μs", micro_total / 5);
 }
+*/
 
 pub fn npir_test(databaselog: usize) {
     let ntru_params = Params::init(2048, 
@@ -420,9 +425,8 @@ pub fn npir_test(databaselog: usize) {
     let mut rng = ChaCha20Rng::from_entropy();
     let mut micro_total = 0;
     for _t in 0..6 {
-        let index_r = rng.gen::<usize>() % npir.drows;
         let index_c = rng.gen::<usize>() % (ntru_params.poly_len * npir.ell);
-        println!("Query the data at {}, {} ...", index_r, index_c);
+        println!("Query the data at {} column ...", index_c);
         let (column, rotate) = npir.compress_query(index_c);
 
         println!("Server computes the answer ...");
@@ -435,59 +439,64 @@ pub fn npir_test(databaselog: usize) {
         }
         println!("Server time: {} μs", micros1);
 
-        let b = npir.recovery(index_r, &ans);
-        assert_eq!(b, npir.db_raw.get_poly(index_r, index_c / dimension)[index_c % dimension]);
-        println!("Extract the data {} from the database!", b);
+        let b = npir.recovery(&ans);
+        for i in 0..1 {
+            for j in 0..dimension{
+                assert_eq!(b[i].get_poly(0, 0)[j], npir.db_raw.get_poly(i * dimension + j, index_c / dimension)[index_c % dimension]);
+            }
+        }
+        println!("Extract correctly!");
         println!("########################################################################################");
     }
     println!("Server ave time: {} μs", micro_total / 5);
 }
 
+pub fn npir_large_test(databaselog: usize, phi: usize) {
+    let ntru_params = Params::init(2048,
+        &[23068673, 1004535809],
+        2.05,
+        1,
+        256,
+        databaselog,);
+    println!("Generate the database with size 2^{} ...", ntru_params.db_size_log);
+    let npir = Npir::new(&ntru_params, phi, 3, 5, 8);
+
+    println!("The database has {} rows and {} cols.", npir.drows, npir.ell);
+    let dimension = ntru_params.poly_len;
+    let mut rng = ChaCha20Rng::from_entropy();
+    let mut micro_total = 0;
+    for _t in 0..6 {
+        let index_c = rng.gen::<usize>() % (ntru_params.poly_len * npir.ell);
+        println!("Query the data at {} column ...", index_c);
+        let (column, rotate) = npir.compress_query(index_c);
+
+
+        println!("Server computes the answer ...");
+        let start1 = Instant::now();
+        let ans = npir.answercompressed(column, rotate);
+        let duration1 = start1.elapsed();
+        let micros1 = duration1.as_micros();
+        if _t != 0 {
+            micro_total += micros1;
+        }
+        println!("Server time: {} μs", micros1);
+
+        let b = npir.recovery(&ans);
+        for i in 0..phi {
+            for j in 0..dimension{
+                assert_eq!(b[i].get_poly(0, 0)[j], npir.db_raw.get_poly(i * dimension + j, index_c / dimension)[index_c % dimension]);
+            }
+        }
+        println!("Extract correctly!");
+        println!("########################################################################################");
+    }
+    println!("Server ave time: {} μs", micro_total / 5);
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    #[ignore]
-    fn npirfree_64mb_correctness() {
-        npirfree_test(29);
-    }
-
-    #[test]
-    #[ignore]
-    fn npirfree_256mb_correctness() {
-        npirfree_test(31);
-    }
-
-    #[test]
-    #[ignore]
-    fn npirfree_512mb_correctness() {
-        npirfree_test(32);
-    }
-
-    #[test]
-    #[ignore]
-    fn npirfree_1gb_correctness() {
-        npirfree_test(33);
-    }
-
-    #[test]
-    #[ignore]
-    fn npirfree_2gb_correctness() {
-        npirfree_test(34);
-    }
-
-    #[test]
-    #[ignore]
-    fn npirfree_4gb_correctness() {
-        npirfree_test(35);
-    }
-
-    #[test]
-    #[ignore]
-    fn npirfree_8gb_correctness() {
-        npirfree_test(36);
-    }
 
     #[test]
     #[ignore]
@@ -535,5 +544,29 @@ mod tests {
     #[ignore]
     fn npir_8gb_correctness() {
         npir_test(36);
+    }
+
+    #[test]
+    //#[ignore]
+    fn npir_1gb_32kb_correctness() {
+        npir_large_test(33,16);
+    }
+
+    #[test]
+    #[ignore]
+    fn npir_2gb_32kb_correctness() {
+        npir_large_test(34,16);
+    }
+
+    #[test]
+    #[ignore]
+    fn npir_4gb_32kb_correctness() {
+        npir_large_test(35,16);
+    }
+
+    #[test]
+    #[ignore]
+    fn npir_8gb_32kb_correctness() {
+        npir_large_test(36,16);
     }
 }
