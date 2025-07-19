@@ -393,8 +393,8 @@ mod tests {
 
     #[test]
     // #[ignore]
-    fn batchnpir_256mb_8_correctness() {
-        batch_npir_test(31, 8);
+    fn batchnpir_256mb_4_correctness() {
+        batch_npir_test(31, 4);
     }
 
     #[test]
@@ -412,8 +412,8 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn batchnpir_1gb_8_correctness() {
-        batch_npir_test(33, 8);
+    fn batchnpir_1gb_4_correctness() {
+        batch_npir_test(33, 4);
     }
 
     #[test]
