@@ -206,7 +206,7 @@ impl<'a> NtruRp<'a> {
         let mut noise_poly = PolyMatrixRaw::zero(self.ntru_params, 1, 1);
         
         for coeff in 0..self.ntru_params.poly_len {
-            noise_poly.get_poly_mut(0, 0)[coeff] = dg.sample(modulus, &mut rng) as u64;
+            noise_poly.get_poly_mut(0, 0)[coeff] = dg.fast_sample(modulus, &mut rng) as u64;
         }
         
         noise_poly.get_poly_mut(0, 0)[0] += plaintext * self.delta_q();
@@ -229,7 +229,7 @@ impl<'a> NtruRp<'a> {
         let mut noise_poly = PolyMatrixRaw::zero(self.ntru_params, 1, 1);
         
         for coeff in 0..self.ntru_params.poly_len {
-            noise_poly.get_poly_mut(0, 0)[coeff] = dg.sample(modulus, &mut rng) as u64;
+            noise_poly.get_poly_mut(0, 0)[coeff] = dg.fast_sample(modulus, &mut rng) as u64;
         }
         
         noise_poly = &noise_poly + &plaintext_poly;
