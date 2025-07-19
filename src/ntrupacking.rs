@@ -163,7 +163,7 @@ impl<'a> NtruRp<'a> {
                 let mut tauf = tau(&ntru_params, (1 << (i + 1)) as usize + 1, tem_sk.clone());
   
                 for k in 0..dimension{
-                    g.get_poly_mut(0, 0)[k] = dg.sample(modulus, &mut rng) as u64;
+                    g.get_poly_mut(0, 0)[k] = dg.fast_sample(modulus, &mut rng) as u64;
                     let data = tauf.get_poly(0, 0)[k];
                     tauf.get_poly_mut(0, 0)[k] = multiply_uint_mod(data, btem, modulus);
                 }
