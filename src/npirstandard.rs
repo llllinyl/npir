@@ -108,11 +108,11 @@ impl<'a> Npir<'a> {
         let mut db_raw = PolyMatrixRaw::zero(ntru_params, drows, ell);
         randomdb(ntru_params, &mut db, &mut db_raw);
         
-        let modbit = (ntru_params.modulus as f64).log2().ceil() as usize;
-        let mod0bit = (ntru_params.moduli[0] as f64).log2().ceil() as usize;
-        println!("Public parameters size: {:.2} KB", (modbit * dimension * (ell.ilog2() as usize * tce + ntru_params.poly_len_log2 * tpk)) as f64 / 8192.0 as f64);
-        println!("Query size: {:.2} KB", (modbit * dimension * ((ell as f64 / dimension as f64).ceil() as usize + tg)) as f64 / 8192.0 as f64);
-        println!("Response size: {:.2} KB", (mod0bit * dimension * phi) as f64 / 8192.0 as f64);
+        let modbit = ((ntru_params.modulus as f64).log2() / 8.00 as f64).ceil() as usize;
+        let mod0bit = ((ntru_params.moduli[0] as f64).log2() / 8.00 as f64).ceil() as usize;
+        println!("Public parameters size: {:.2} KB", (modbit * dimension * (ell.ilog2() as usize * tce + ntru_params.poly_len_log2 * tpk)) as f64 / 1024.0 as f64);
+        println!("Query size: {:.2} KB", (modbit * dimension * ((ell as f64 / dimension as f64).ceil() as usize + tg)) as f64 / 1024.0 as f64);
+        println!("Response size: {:.2} KB", (mod0bit * dimension * phi) as f64 / 1024.0 as f64);
         println!("========================================================================================");
         
         Npir {
