@@ -313,19 +313,19 @@ impl<'a> BatchNpir<'a> {
         answer_blocks
     }
     
-    pub fn recovery(&self, index: &[usize], answer_blocks: &[PolyMatrixRaw<'_>], batchsize: usize) -> Vec<u64> {
-        let dimension = self.ntru_params.poly_len;
+    pub fn recovery(&self, answer_blocks: &[PolyMatrixRaw<'_>], batchsize: usize) -> Vec<PolyMatrixRaw<'_>> {
         let phi = self.phi;
-        let mut result = Vec::with_capacity(batchsize);
+        let mut result = Vec::with_capacity(batchsize * phi);
 
         let start_time = Instant::now();
         for idx in 0..batchsize {
-            let block_idx = index[idx] / dimension;
-            let position_in_block = index[idx] % dimension;
-            let target_block = answer_blocks[idx * phi + block_idx].clone();
-            let target_block_ntt = to_ntt_alloc(&target_block);
-            let decrypted_block = self.ntrurp.decryptrp(target_block_ntt);  
-            result.push(decrypted_block.get_poly(0, 0)[position_in_block] as u64);          
+            for i in 0..phi {
+                let target_block = answer_blocks[idx * phi + i].clone();
+                let target_block_ntt = to_ntt_alloc(&target_block);
+                let decrypted_block = self.ntrurp.decryptrp(target_block_ntt);  
+                result.push(decrypted_block);                 
+            }
+         
         }
         println!("Data recovery time: {} μs", start_time.elapsed().as_micros());
 
@@ -346,26 +346,27 @@ pub fn batch_npir_test(databaselog: usize, batchsize: usize) {
     let dimension = ntru_params.poly_len;
     let totalcolumn = batchnpir.ell * batchsize;
     let ctnum = (totalcolumn as f64 / dimension as f64).ceil() as usize;
-    let modbit = (ntru_params.modulus as f64).log2().ceil() as usize;
-    let mod0bit = (ntru_params.moduli[0] as f64).log2().ceil() as usize;
+    let modbit = ((ntru_params.modulus as f64).log2() / 8.00 as f64).ceil() as usize;
+    let mod0bit = ((ntru_params.moduli[0] as f64).log2() / 8.00 as f64).ceil() as usize;
     let pbsize = if ctnum == 0 { 
-        (modbit * dimension * ((totalcolumn as f64).log2().ceil() as usize * tce + ntru_params.poly_len_log2 * tpk)) as f64 / 8192.0 as f64 } 
+        (modbit * dimension * ((totalcolumn as f64).log2().ceil() as usize * batchnpir.tce + ntru_params.poly_len_log2 * batchnpir.ntrurp.tpk)) as f64 / 8192.0 as f64 } 
     else { 
-        (modbit * dimension * ntru_params.poly_len_log2 * (tce + tpk)) as f64 / 8192.0 as f64 };
+        (modbit * dimension * ntru_params.poly_len_log2 * (batchnpir.tce + batchnpir.ntrurp.tpk)) as f64 / 1024.0 as f64 };
     println!("Public parameters size: {:.2} KB", pbsize);
-    println!("Query size: {:.2} KB", (modbit * dimension * (ctnum + tg * batchsize)) as f64 / 8192.0 as f64);
-    println!("Response size: {:.2} KB", (mod0bit * dimension * phi * batchsize) as f64 / 8192.0 as f64);
+    println!("Query size: {:.2} KB", (modbit * dimension * (ctnum + batchnpir.tg * batchsize)) as f64 / 1024.0 as f64);
+    println!("Response size: {:.2} KB", (mod0bit * dimension * batchnpir.phi * batchsize) as f64 / 1024.0 as f64);
     println!("========================================================================================");
     
+
+
+
     println!("The database has {} rows and {} cols.", batchnpir.drows, batchnpir.ell); 
     let mut rng = ChaCha20Rng::from_entropy();
     for _t in 0..6 {
-        let mut index_r = Vec::with_capacity(batchsize);
         let mut index_c = Vec::with_capacity(batchsize);
         for idx in 0..batchsize{
-            index_r.push(rng.gen::<usize>() % batchnpir.drows);
             index_c.push(rng.gen::<usize>() % (ntru_params.poly_len * batchnpir.ell));
-            println!("Query the data at {}, {} ...", index_r[idx], index_c[idx]);
+            println!("Query the data at {}-th column ...", index_c[idx]);
         }
 
         let (column, rotate) = batchnpir.compress_query(&index_c, batchsize);
@@ -373,10 +374,14 @@ pub fn batch_npir_test(databaselog: usize, batchsize: usize) {
         println!("Server computes the answer ...");
         let ans = batchnpir.answercompressed(&column, &rotate, batchsize);
 
-        let b = batchnpir.recovery(&index_r, &ans, batchsize);
+        let b = batchnpir.recovery(&ans, batchsize);
         for idx in 0..batchsize {
-            assert_eq!(b[idx], batchnpir.db_raw.get_poly(index_r[idx], index_c[idx] / dimension)[index_c[idx] % dimension]);
-            // println!("Batch {}: Extract the data {} from the database!", idx, b[idx]);           
+            for i in 0..1 {
+                for j in 0..dimension{
+                    assert_eq!(b[idx * 1 + i].get_poly(0, 0)[j], batchnpir.db_raw.get_poly(i * dimension + j, index_c[idx] / dimension)[index_c[idx] % dimension]);
+                }
+            }
+            println!("Batch {}: Extract correctly!", idx);           
         }
         println!("########################################################################################");
     }
@@ -387,19 +392,19 @@ mod tests {
     use super::*;
 
     #[test]
-    //#[ignore]
+    // #[ignore]
     fn batchnpir_256mb_8_correctness() {
         batch_npir_test(31, 8);
     }
 
     #[test]
-    //#[ignore]
+    #[ignore]
     fn batchnpir_256mb_32_correctness() {
         batch_npir_test(31, 32);
     }
 
     #[test]
-    //#[ignore]
+    #[ignore]
     fn batchnpir_256mb_256_correctness() {
         batch_npir_test(31, 256);
     }
