@@ -96,9 +96,12 @@ impl<'a> BatchNpir<'a> {
             cek.push(tem_cek);
         }
 
-        let mut db = PolyMatrixNTT::zero(ntru_params, drows, ell);
         let mut db_raw = PolyMatrixRaw::zero(ntru_params, drows, ell);
-        randomdb(ntru_params, &mut db, &mut db_raw);
+        randomdb(ntru_params, &mut db_raw);
+        let init = Instant::now();
+        let db = to_ntt_alloc(&db_raw);
+        println!("Server prep. time: {} μs", init.elapsed().as_micros());
+        println!("========================================================================================");
 
         BatchNpir {
             ntru_params,
