@@ -37,7 +37,7 @@ pub fn multiply_x_inverse<'a>(params: &'a Params, k: usize, input: PolyMatrixRaw
     output
 }
 
-pub fn randomdb<'a>(params: &'a Params, db: &mut PolyMatrixNTT<'a>,  db_raw: &mut PolyMatrixRaw<'a>) {
+pub fn randomdb<'a>(params: &'a Params,  db_raw: &mut PolyMatrixRaw<'a>) {
     let mut rng = ChaCha20Rng::from_entropy();
     let dimension = params.poly_len;
     let pt = params.pt_modulus;
@@ -45,15 +45,10 @@ pub fn randomdb<'a>(params: &'a Params, db: &mut PolyMatrixNTT<'a>,  db_raw: &mu
     for i in 0..db.rows {
         for j in 0..db.cols {
             for k in 0..dimension{
-                let data = rng.gen::<u64>().rem_euclid(pt);
-                db_raw.get_poly_mut(i, j)[k] = data;
+                db_raw.get_poly_mut(i, j)[k] = rng.gen::<u64>().rem_euclid(pt);
             }
         }
     }
-    let init = Instant::now();
-    *db = to_ntt_alloc(&db_raw);
-    println!("Server prep. time: {} μs", init.elapsed().as_micros());
-    println!("========================================================================================");
 }
 
 impl<'a> Npir<'a> {
@@ -104,9 +99,12 @@ impl<'a> Npir<'a> {
             cek.push(tem_cek);
         }
 
-        let mut db = PolyMatrixNTT::zero(ntru_params, drows, ell);
         let mut db_raw = PolyMatrixRaw::zero(ntru_params, drows, ell);
-        randomdb(ntru_params, &mut db, &mut db_raw);
+        randomdb(ntru_params, &mut db_raw);
+        let init = Instant::now();
+        let db = to_ntt_alloc(&db_raw);
+        println!("Server prep. time: {} μs", init.elapsed().as_micros());
+        println!("========================================================================================");
         
         let modbit = ((ntru_params.modulus as f64).log2() / 8.00 as f64).ceil() as usize;
         let mod0bit = ((ntru_params.moduli[0] as f64).log2() / 8.00 as f64).ceil() as usize;
