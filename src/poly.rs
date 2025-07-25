@@ -8,7 +8,6 @@ use std::cell::RefCell;
 use std::ops::{Add, Mul, Neg};
 use crate::{aligned_memory::*, arith::*, discrete_gaussian::*, ntt::*, params::*, util::*};
 
-// thread_local!(static SCRATCH: RefCell<AlignedMemory64<u16>> = RefCell::new(AlignedMemory64::<u16>::new(4096 as usize)));
 thread_local!(static SCRATCH: RefCell<AlignedMemory64<u64>> = RefCell::new(AlignedMemory64::<u64>::new(16384 as usize)));
 
 pub trait PolyMatrix<'a> {
