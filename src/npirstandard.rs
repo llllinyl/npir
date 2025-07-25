@@ -42,8 +42,8 @@ pub fn randomdb<'a>(params: &'a Params,  db_raw: &mut PolyMatrixSmall<'a>) {
     let dimension = params.poly_len;
     let pt = params.pt_modulus;
 
-    for i in 0..db.rows {
-        for j in 0..db.cols {
+    for i in 0..db_raw.rows {
+        for j in 0..db_raw.cols {
             for k in 0..dimension{
                 db_raw.get_poly_mut(i, j)[k] = rng.gen::<u16>().rem_euclid(pt as u16);
             }
@@ -101,6 +101,7 @@ impl<'a> Npir<'a> {
             cek.push(tem_cek);
         }
 
+        println!("Generate and preprocess the database!");
         let mut db_raw = PolyMatrixSmall::zero(ntru_params, drows, ell);
         randomdb(ntru_params, &mut db_raw);
         let init = Instant::now();
@@ -568,5 +569,17 @@ mod tests {
     #[ignore]
     fn npir_8gb_32kb_correctness() {
         npir_large_test(36,16);
+    }
+
+    #[test]
+    #[ignore]
+    fn npir_16gb_32kb_correctness() {
+        npir_large_test(37,16);
+    }
+
+    #[test]
+    #[ignore]
+    fn npir_32gb_32kb_correctness() {
+        npir_large_test(38,16);
     }
 }
