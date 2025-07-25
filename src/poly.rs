@@ -1,64 +1,12 @@
 #[cfg(target_feature = "avx2")]
 use std::arch::x86_64::*;
 
-use rand::distributions::Standard;
-use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 use std::cell::RefCell;
 use std::ops::{Add, Mul, Neg};
 use crate::{aligned_memory::*, arith::*, discrete_gaussian::*, ntt::*, params::*, util::*};
 
 thread_local!(static SCRATCH: RefCell<AlignedMemory64<u64>> = RefCell::new(AlignedMemory64::<u64>::new(16384 as usize)));
-
-pub trait PolyMatrix<'a> {
-    fn is_ntt(&self) -> bool;
-    fn get_rows(&self) -> usize;
-    fn get_cols(&self) -> usize;
-    fn get_params(&self) -> &Params;
-    fn num_words(&self) -> usize;
-    fn zero(params: &'a Params, rows: usize, cols: usize) -> Self;
-    fn random(params: &'a Params, rows: usize, cols: usize) -> Self;
-    fn random_ternary_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self;
-    fn random_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self;
-    fn as_slice(&self) -> &[u64];
-    fn as_mut_slice(&mut self) -> &mut [u64];
-    fn zero_out(&mut self) {
-        for item in self.as_mut_slice() {
-            *item = 0;
-        }
-    }
-    fn get_poly(&self, row: usize, col: usize) -> &[u64] {
-        let num_words = self.num_words();
-        let start = (row * self.get_cols() + col) * num_words;
-        // &self.as_slice()[start..start + num_words]
-        unsafe { self.as_slice().get_unchecked(start..start + num_words) }
-    }
-    fn get_poly_mut(&mut self, row: usize, col: usize) -> &mut [u64] {
-        let num_words = self.num_words();
-        let start = (row * self.get_cols() + col) * num_words;
-        // &mut self.as_mut_slice()[start..start + num_words]
-        unsafe {
-            self.as_mut_slice()
-                .get_unchecked_mut(start..start + num_words)
-        }
-    }
-    fn copy_into(&mut self, p: &Self, target_row: usize, target_col: usize) {
-        assert!(target_row < self.get_rows());
-        assert!(target_col < self.get_cols());
-        assert!(target_row + p.get_rows() <= self.get_rows());
-        assert!(target_col + p.get_cols() <= self.get_cols());
-        for r in 0..p.get_rows() {
-            for c in 0..p.get_cols() {
-                let pol_src = p.get_poly(r, c);
-                let pol_dst = self.get_poly_mut(target_row + r, target_col + c);
-                pol_dst.copy_from_slice(pol_src);
-            }
-        }
-    }
-
-    fn submatrix(&self, target_row: usize, target_col: usize, rows: usize, cols: usize) -> Self;
-    fn pad_top(&self, pad_rows: usize) -> Self;
-}
 
 pub struct PolyMatrixSmall<'a> {
     pub params: &'a Params,
@@ -135,29 +83,27 @@ impl<'a> Clone for PolyMatrixSmall<'a> {
     }
 }
 
-impl<'a> PolyMatrix<'a> for PolyMatrixRaw<'a> {
-    fn is_ntt(&self) -> bool {
-        false
-    }
+impl<'a> PolyMatrixRaw<'a> {
+
     fn get_rows(&self) -> usize {
         self.rows
     }
     fn get_cols(&self) -> usize {
         self.cols
     }
-    fn get_params(&self) -> &Params {
+    pub fn get_params(&self) -> &Params {
         &self.params
     }
-    fn as_slice(&self) -> &[u64] {
+    pub fn as_slice(&self) -> &[u64] {
         self.data.as_slice()
     }
-    fn as_mut_slice(&mut self) -> &mut [u64] {
+    pub fn as_mut_slice(&mut self) -> &mut [u64] {
         self.data.as_mut_slice()
     }
     fn num_words(&self) -> usize {
         self.params.poly_len
     }
-    fn zero(params: &'a Params, rows: usize, cols: usize) -> PolyMatrixRaw<'a> {
+    pub fn zero(params: &'a Params, rows: usize, cols: usize) -> PolyMatrixRaw<'a> {
         let num_coeffs = rows * cols * params.poly_len;
         let data = AlignedMemory64::<u64>::new(num_coeffs);
         PolyMatrixRaw {
@@ -167,48 +113,35 @@ impl<'a> PolyMatrix<'a> for PolyMatrixRaw<'a> {
             data,
         }
     }
-    fn random_ternary_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self {
-        let mut iter = rng.sample_iter(&Standard);
-        let mut out = PolyMatrixRaw::zero(params, rows, cols);
-        for r in 0..rows {
-            for c in 0..cols {
-                for i in 0..params.poly_len {
-                    let val: u64 = iter.next().unwrap();
-                    let result = match val % 3 {
-                        0 => 0,
-                        1 => 1,
-                        2 => params.modulus - 1,
-                        _ => unreachable!(),
-                    };
-                    out.get_poly_mut(r, c)[i] = result;
-                }
+    pub fn get_poly(&self, row: usize, col: usize) -> &[u64] {
+        let num_words = self.num_words();
+        let start = (row * self.get_cols() + col) * num_words;
+        // &self.as_slice()[start..start + num_words]
+        unsafe { self.as_slice().get_unchecked(start..start + num_words) }
+    }
+    pub fn get_poly_mut(&mut self, row: usize, col: usize) -> &mut [u64] {
+        let num_words = self.num_words();
+        let start = (row * self.get_cols() + col) * num_words;
+        // &mut self.as_mut_slice()[start..start + num_words]
+        unsafe {
+            self.as_mut_slice()
+                .get_unchecked_mut(start..start + num_words)
+        }
+    }
+    pub fn copy_into(&mut self, p: &Self, target_row: usize, target_col: usize) {
+        assert!(target_row < self.get_rows());
+        assert!(target_col < self.get_cols());
+        assert!(target_row + p.get_rows() <= self.get_rows());
+        assert!(target_col + p.get_cols() <= self.get_cols());
+        for r in 0..p.get_rows() {
+            for c in 0..p.get_cols() {
+                let pol_src = p.get_poly(r, c);
+                let pol_dst = self.get_poly_mut(target_row + r, target_col + c);
+                pol_dst.copy_from_slice(pol_src);
             }
         }
-        out
     }
-    fn random_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self {
-        let mut iter = rng.sample_iter(&Standard);
-        let mut out = PolyMatrixRaw::zero(params, rows, cols);
-        for r in 0..rows {
-            for c in 0..cols {
-                for i in 0..params.poly_len {
-                    let val: u64 = iter.next().unwrap();
-                    out.get_poly_mut(r, c)[i] = val % params.modulus;
-                }
-            }
-        }
-        out
-    }
-    fn random(params: &'a Params, rows: usize, cols: usize) -> Self {
-        let mut rng = rand::thread_rng();
-        Self::random_rng(params, rows, cols, &mut rng)
-    }
-    fn pad_top(&self, pad_rows: usize) -> Self {
-        let mut padded = Self::zero(self.params, self.rows + pad_rows, self.cols);
-        padded.copy_into(&self, pad_rows, 0);
-        padded
-    }
-    fn submatrix(&self, target_row: usize, target_col: usize, rows: usize, cols: usize) -> Self {
+    pub fn submatrix(&self, target_row: usize, target_col: usize, rows: usize, cols: usize) -> Self {
         let mut m = Self::zero(self.params, rows, cols);
         assert!(target_row < self.rows);
         assert!(target_col < self.cols);
@@ -341,29 +274,26 @@ impl<'a> PolyMatrixRaw<'a> {
     }
 }
 
-impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
-    fn is_ntt(&self) -> bool {
-        true
-    }
+impl<'a> PolyMatrixNTT<'a> {
     fn get_rows(&self) -> usize {
         self.rows
     }
     fn get_cols(&self) -> usize {
         self.cols
     }
-    fn get_params(&self) -> &Params {
+    pub fn get_params(&self) -> &Params {
         &self.params
     }
-    fn as_slice(&self) -> &[u64] {
+    pub fn as_slice(&self) -> &[u64] {
         self.data.as_slice()
     }
-    fn as_mut_slice(&mut self) -> &mut [u64] {
+    pub fn as_mut_slice(&mut self) -> &mut [u64] {
         self.data.as_mut_slice()
     }
     fn num_words(&self) -> usize {
         self.params.poly_len * self.params.crt_count
     }
-    fn zero(params: &'a Params, rows: usize, cols: usize) -> PolyMatrixNTT<'a> {
+    pub fn zero(params: &'a Params, rows: usize, cols: usize) -> PolyMatrixNTT<'a> {
         let num_coeffs = rows * cols * params.poly_len * params.crt_count;
         let data = AlignedMemory::new(num_coeffs);
         PolyMatrixNTT {
@@ -373,55 +303,35 @@ impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
             data,
         }
     }
-    fn random_ternary_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self {
-        let mut iter = rng.sample_iter(&Standard);
-        let mut out = PolyMatrixNTT::zero(params, rows, cols);
-        for r in 0..rows {
-            for c in 0..cols {
-                for i in 0..params.crt_count {
-                    for j in 0..params.poly_len {
-                        let idx = calc_index(&[i, j], &[params.crt_count, params.poly_len]);
-                        let val: u64 = iter.next().unwrap();
-                        let result = match val % 3 {
-                            0 => 0,
-                            1 => 1,
-                            2 => params.modulus - 1,
-                            _ => unreachable!(),
-                        };
-                        out.get_poly_mut(r, c)[idx] = result;
-                    }
-                }
+    pub fn get_poly(&self, row: usize, col: usize) -> &[u64] {
+        let num_words = self.num_words();
+        let start = (row * self.get_cols() + col) * num_words;
+        // &self.as_slice()[start..start + num_words]
+        unsafe { self.as_slice().get_unchecked(start..start + num_words) }
+    }
+    pub fn get_poly_mut(&mut self, row: usize, col: usize) -> &mut [u64] {
+        let num_words = self.num_words();
+        let start = (row * self.get_cols() + col) * num_words;
+        // &mut self.as_mut_slice()[start..start + num_words]
+        unsafe {
+            self.as_mut_slice()
+                .get_unchecked_mut(start..start + num_words)
+        }
+    }
+    pub fn copy_into(&mut self, p: &Self, target_row: usize, target_col: usize) {
+        assert!(target_row < self.get_rows());
+        assert!(target_col < self.get_cols());
+        assert!(target_row + p.get_rows() <= self.get_rows());
+        assert!(target_col + p.get_cols() <= self.get_cols());
+        for r in 0..p.get_rows() {
+            for c in 0..p.get_cols() {
+                let pol_src = p.get_poly(r, c);
+                let pol_dst = self.get_poly_mut(target_row + r, target_col + c);
+                pol_dst.copy_from_slice(pol_src);
             }
         }
-        out
     }
-    fn random_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self {
-        let mut iter = rng.sample_iter(&Standard);
-        let mut out = PolyMatrixNTT::zero(params, rows, cols);
-        for r in 0..rows {
-            for c in 0..cols {
-                for i in 0..params.crt_count {
-                    for j in 0..params.poly_len {
-                        let idx = calc_index(&[i, j], &[params.crt_count, params.poly_len]);
-                        let val: u64 = iter.next().unwrap();
-                        out.get_poly_mut(r, c)[idx] = val % params.moduli[i];
-                    }
-                }
-            }
-        }
-        out
-    }
-    fn random(params: &'a Params, rows: usize, cols: usize) -> Self {
-        let mut rng = rand::thread_rng();
-        Self::random_rng(params, rows, cols, &mut rng)
-    }
-    fn pad_top(&self, pad_rows: usize) -> Self {
-        let mut padded = Self::zero(self.params, self.rows + pad_rows, self.cols);
-        padded.copy_into(&self, pad_rows, 0);
-        padded
-    }
-
-    fn submatrix(&self, target_row: usize, target_col: usize, rows: usize, cols: usize) -> Self {
+    pub fn submatrix(&self, target_row: usize, target_col: usize, rows: usize, cols: usize) -> Self {
         let mut m = Self::zero(self.params, rows, cols);
         assert!(target_row < self.rows);
         assert!(target_col < self.cols);
@@ -1029,4 +939,3 @@ impl<'a, 'b> Add for &'b PolyMatrixRaw<'a> {
         out
     }
 }
-
