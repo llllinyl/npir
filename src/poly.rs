@@ -8,8 +8,8 @@ use std::cell::RefCell;
 use std::ops::{Add, Mul, Neg};
 use crate::{aligned_memory::*, arith::*, discrete_gaussian::*, ntt::*, params::*, util::*};
 
-const SCRATCH_SPACE: usize = 8192;
-thread_local!(static SCRATCH: RefCell<AlignedMemory64> = RefCell::new(AlignedMemory64::new(SCRATCH_SPACE)));
+// thread_local!(static SCRATCH: RefCell<AlignedMemory64<u16>> = RefCell::new(AlignedMemory64::<u16>::new(4096 as usize)));
+thread_local!(static SCRATCH: RefCell<AlignedMemory64<u64>> = RefCell::new(AlignedMemory64::<u64>::new(16384 as usize)));
 
 pub trait PolyMatrix<'a> {
     fn is_ntt(&self) -> bool;
@@ -61,18 +61,79 @@ pub trait PolyMatrix<'a> {
     fn pad_top(&self, pad_rows: usize) -> Self;
 }
 
+pub struct PolyMatrixSmall<'a> {
+    pub params: &'a Params,
+    pub rows: usize,
+    pub cols: usize,
+    pub data: AlignedMemory64<u16>,
+}
+
 pub struct PolyMatrixRaw<'a> {
     pub params: &'a Params,
     pub rows: usize,
     pub cols: usize,
-    pub data: AlignedMemory64,
+    pub data: AlignedMemory64<u64>,
 }
 
 pub struct PolyMatrixNTT<'a> {
     pub params: &'a Params,
     pub rows: usize,
     pub cols: usize,
-    pub data: AlignedMemory64,
+    pub data: AlignedMemory64<u64>,
+}
+
+
+impl<'a> PolyMatrixSmall<'a> {
+    fn get_cols(&self) -> usize {
+        self.cols
+    }
+    fn as_slice(&self) -> &[u16] {
+        self.data.as_slice()
+    }
+    fn as_mut_slice(&mut self) -> &mut [u16] {
+        self.data.as_mut_slice()
+    }
+    pub fn get_poly(&self, row: usize, col: usize) -> &[u16] {
+        let num_words = self.num_words();
+        let start = (row * self.get_cols() + col) * num_words;
+        unsafe { self.as_slice().get_unchecked(start..start + num_words) }
+    }
+    pub fn get_poly_mut(&mut self, row: usize, col: usize) -> &mut [u16] {
+        let num_words = self.num_words();
+        let start = (row * self.get_cols() + col) * num_words;
+        unsafe {
+            self.as_mut_slice()
+                .get_unchecked_mut(start..start + num_words)
+        }
+    }
+    fn num_words(&self) -> usize {
+        self.params.poly_len
+    }
+    pub fn zero(params: &'a Params, rows: usize, cols: usize) -> PolyMatrixSmall<'a> {
+        let num_coeffs = rows * cols * params.poly_len;
+        let data = AlignedMemory64::<u16>::new(num_coeffs);
+        PolyMatrixSmall {
+            params,
+            rows,
+            cols,
+            data,
+        }
+    }
+}
+
+impl<'a> Clone for PolyMatrixSmall<'a> {
+    fn clone(&self) -> Self {
+        let mut data_clone = AlignedMemory64::<u16>::new(self.data.len());
+        data_clone
+            .as_mut_slice()
+            .copy_from_slice(self.data.as_slice());
+        PolyMatrixSmall {
+            params: self.params,
+            rows: self.rows,
+            cols: self.cols,
+            data: data_clone,
+        }
+    }
 }
 
 impl<'a> PolyMatrix<'a> for PolyMatrixRaw<'a> {
@@ -99,7 +160,7 @@ impl<'a> PolyMatrix<'a> for PolyMatrixRaw<'a> {
     }
     fn zero(params: &'a Params, rows: usize, cols: usize) -> PolyMatrixRaw<'a> {
         let num_coeffs = rows * cols * params.poly_len;
-        let data = AlignedMemory64::new(num_coeffs);
+        let data = AlignedMemory64::<u64>::new(num_coeffs);
         PolyMatrixRaw {
             params,
             rows,
@@ -167,7 +228,7 @@ impl<'a> PolyMatrix<'a> for PolyMatrixRaw<'a> {
 
 impl<'a> Clone for PolyMatrixRaw<'a> {
     fn clone(&self) -> Self {
-        let mut data_clone = AlignedMemory64::new(self.data.len());
+        let mut data_clone = AlignedMemory64::<u64>::new(self.data.len());
         data_clone
             .as_mut_slice()
             .copy_from_slice(self.data.as_slice());
@@ -380,7 +441,7 @@ impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
 
 impl<'a> Clone for PolyMatrixNTT<'a> {
     fn clone(&self) -> Self {
-        let mut data_clone = AlignedMemory64::new(self.data.len());
+        let mut data_clone = AlignedMemory64::<u64>::new(self.data.len());
         data_clone
             .as_mut_slice()
             .copy_from_slice(self.data.as_slice());
@@ -808,10 +869,30 @@ pub fn single_poly<'a>(params: &'a Params, val: u64) -> PolyMatrixRaw<'a> {
     res
 }
 
+pub fn reduce_copy_small(params: &Params, out: &mut [u64], inp: &[u16]) {
+    for n in 0..params.crt_count {
+        for z in 0..params.poly_len {
+            out[n * params.poly_len + z] = barrett_coeff_u64(params, inp[z] as u64, n);
+        }
+    }
+}
+
 pub fn reduce_copy(params: &Params, out: &mut [u64], inp: &[u64]) {
     for n in 0..params.crt_count {
         for z in 0..params.poly_len {
             out[n * params.poly_len + z] = barrett_coeff_u64(params, inp[z], n);
+        }
+    }
+}
+
+pub fn to_ntt_small(a: &mut PolyMatrixNTT, b: &PolyMatrixSmall) {
+    let params = a.params;
+    for r in 0..a.rows {
+        for c in 0..a.cols {
+            let pol_src = b.get_poly(r, c);
+            let pol_dst = a.get_poly_mut(r, c);
+            reduce_copy_small(params, pol_dst, pol_src);
+            ntt_forward(params, pol_dst);
         }
     }
 }
@@ -841,6 +922,12 @@ pub fn to_ntt_no_reduce(a: &mut PolyMatrixNTT, b: &PolyMatrixRaw) {
             ntt_forward(params, pol_dst);
         }
     }
+}
+
+pub fn to_ntt_alloc_small<'a>(b: &PolyMatrixSmall<'a>) -> PolyMatrixNTT<'a> {
+    let mut a = PolyMatrixNTT::zero(b.params, b.rows, b.cols);
+    to_ntt_small(&mut a, b);
+    a
 }
 
 pub fn to_ntt_alloc<'a>(b: &PolyMatrixRaw<'a>) -> PolyMatrixNTT<'a> {
@@ -943,3 +1030,4 @@ impl<'a, 'b> Add for &'b PolyMatrixRaw<'a> {
         out
     }
 }
+
