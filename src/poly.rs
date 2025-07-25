@@ -295,7 +295,7 @@ impl<'a> PolyMatrixNTT<'a> {
     }
     pub fn zero(params: &'a Params, rows: usize, cols: usize) -> PolyMatrixNTT<'a> {
         let num_coeffs = rows * cols * params.poly_len * params.crt_count;
-        let data = AlignedMemory::new(num_coeffs);
+        let data = AlignedMemory64::<u64>::new(num_coeffs);
         PolyMatrixNTT {
             params,
             rows,
@@ -306,13 +306,11 @@ impl<'a> PolyMatrixNTT<'a> {
     pub fn get_poly(&self, row: usize, col: usize) -> &[u64] {
         let num_words = self.num_words();
         let start = (row * self.get_cols() + col) * num_words;
-        // &self.as_slice()[start..start + num_words]
         unsafe { self.as_slice().get_unchecked(start..start + num_words) }
     }
     pub fn get_poly_mut(&mut self, row: usize, col: usize) -> &mut [u64] {
         let num_words = self.num_words();
         let start = (row * self.get_cols() + col) * num_words;
-        // &mut self.as_mut_slice()[start..start + num_words]
         unsafe {
             self.as_mut_slice()
                 .get_unchecked_mut(start..start + num_words)
@@ -367,17 +365,6 @@ impl<'a> PolyMatrixNTT<'a> {
     pub fn raw(&self) -> PolyMatrixRaw<'a> {
         from_ntt_alloc(&self)
     }
-}
-
-pub fn shift_rows_by_one<'a>(inp: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
-    if inp.rows == 1 {
-        return inp.clone();
-    }
-
-    let all_but_last_row = inp.submatrix(0, 0, inp.rows - 1, inp.cols);
-    let last_row = inp.submatrix(inp.rows - 1, 0, 1, inp.cols);
-    let out = stack_ntt(&last_row, &all_but_last_row);
-    out
 }
 
 pub fn multiply_poly(params: &Params, res: &mut [u64], a: &[u64], b: &[u64]) {
@@ -862,26 +849,6 @@ pub fn from_ntt(a: &mut PolyMatrixRaw, b: &PolyMatrixNTT) {
             }
         }
     });
-}
-
-pub fn from_ntt_scratch(a: &mut PolyMatrixRaw, scratch: &mut [u64], b: &PolyMatrixNTT) {
-    assert_eq!(b.rows, 2);
-    assert_eq!(b.cols, 1);
-
-    let params = b.params;
-    for r in 0..b.rows {
-        for c in 0..b.cols {
-            let pol_src = b.get_poly(r, c);
-            scratch[0..pol_src.len()].copy_from_slice(pol_src);
-            ntt_inverse(params, scratch);
-            if r == 0 {
-                let pol_dst = a.get_poly_mut(r, c);
-                for z in 0..params.poly_len {
-                    pol_dst[z] = params.crt_compose(scratch, z);
-                }
-            }
-        }
-    }
 }
 
 pub fn from_ntt_alloc<'a>(b: &PolyMatrixNTT<'a>) -> PolyMatrixRaw<'a> {
