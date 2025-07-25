@@ -8,7 +8,7 @@ pub struct Npir<'a> {
     pub ntru_params: &'a Params,
     pub ntrurp: NtruRp<'a>,
     pub db: PolyMatrixNTT<'a>,
-    pub db_raw: PolyMatrixRaw<'a>,
+    pub db_raw: PolyMatrixSmall<'a>,
     pub n1: u64,
     pub r1: u64,
     pub drows: usize,
@@ -37,7 +37,7 @@ pub fn multiply_x_inverse<'a>(params: &'a Params, k: usize, input: PolyMatrixRaw
     output
 }
 
-pub fn randomdb<'a>(params: &'a Params,  db_raw: &mut PolyMatrixRaw<'a>) {
+pub fn randomdb<'a>(params: &'a Params,  db_raw: &mut PolyMatrixSmall<'a>) {
     let mut rng = ChaCha20Rng::from_entropy();
     let dimension = params.poly_len;
     let pt = params.pt_modulus;
@@ -45,10 +45,12 @@ pub fn randomdb<'a>(params: &'a Params,  db_raw: &mut PolyMatrixRaw<'a>) {
     for i in 0..db.rows {
         for j in 0..db.cols {
             for k in 0..dimension{
-                db_raw.get_poly_mut(i, j)[k] = rng.gen::<u64>().rem_euclid(pt);
+                db_raw.get_poly_mut(i, j)[k] = rng.gen::<u16>().rem_euclid(pt as u16);
             }
         }
     }
+    println!("Finish the database!");
+    println!("========================================================================================");
 }
 
 impl<'a> Npir<'a> {
@@ -99,10 +101,10 @@ impl<'a> Npir<'a> {
             cek.push(tem_cek);
         }
 
-        let mut db_raw = PolyMatrixRaw::zero(ntru_params, drows, ell);
+        let mut db_raw = PolyMatrixSmall::zero(ntru_params, drows, ell);
         randomdb(ntru_params, &mut db_raw);
         let init = Instant::now();
-        let db = to_ntt_alloc(&db_raw);
+        let db = to_ntt_alloc_small(&db_raw);
         println!("Server prep. time: {} μs", init.elapsed().as_micros());
         println!("========================================================================================");
         
@@ -440,7 +442,7 @@ pub fn npir_test(databaselog: usize) {
         let b = npir.recovery(&ans);
         for i in 0..1 {
             for j in 0..dimension{
-                assert_eq!(b[i].get_poly(0, 0)[j], npir.db_raw.get_poly(i * dimension + j, index_c / dimension)[index_c % dimension]);
+                assert_eq!(b[i].get_poly(0, 0)[j], npir.db_raw.get_poly(i * dimension + j, index_c / dimension)[index_c % dimension] as u64);
             }
         }
         println!("Extract correctly!");
@@ -482,7 +484,7 @@ pub fn npir_large_test(databaselog: usize, phi: usize) {
         let b = npir.recovery(&ans);
         for i in 0..phi {
             for j in 0..dimension{
-                assert_eq!(b[i].get_poly(0, 0)[j], npir.db_raw.get_poly(i * dimension + j, index_c / dimension)[index_c % dimension]);
+                assert_eq!(b[i].get_poly(0, 0)[j], npir.db_raw.get_poly(i * dimension + j, index_c / dimension)[index_c % dimension] as u64);
             }
         }
         println!("Extract correctly!");
