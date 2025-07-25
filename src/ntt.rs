@@ -355,57 +355,53 @@ pub fn ntt_forward(params: &Params, operand_overall: &mut [u64]) {
     }
 }
 
-// #[cfg(not(target_feature = "avx2"))]
-// pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
-//     if params.crt_count == 1 {
-//         ntt_inverse_alt(params, operand_overall);
-//         return;
-//     }
-//     for coeff_mod in 0..params.crt_count {
-//         let n = params.poly_len;
+#[cfg(not(target_feature = "avx2"))]
+pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
+    if params.crt_count == 1 {
+        ntt_inverse_alt(params, operand_overall);
+        return;
+    }
+    for coeff_mod in 0..params.crt_count {
+        let n = params.poly_len;
+        let operand = &mut operand_overall[coeff_mod * n..coeff_mod * n + n];
+        let inverse_table = params.get_ntt_inverse_table(coeff_mod);
+        let inverse_table_prime = params.get_ntt_inverse_prime_table(coeff_mod);
+        let modulus = params.moduli[coeff_mod];
+        let two_times_modulus: u64 = 2 * modulus;
 
-//         let operand = &mut operand_overall[coeff_mod * n..coeff_mod * n + n];
+        for mm in (0..params.poly_len_log2).rev() {
+            let h = 1 << mm;
+            let t = n >> (mm + 1);
 
-//         let inverse_table = params.get_ntt_inverse_table(coeff_mod);
-//         let inverse_table_prime = params.get_ntt_inverse_prime_table(coeff_mod);
-//         let modulus = params.moduli[coeff_mod];
-//         let two_times_modulus: u64 = 2 * modulus;
+            let mut it = operand.chunks_exact_mut(2 * t);
 
-//         for mm in (0..params.poly_len_log2).rev() {
-//             let h = 1 << mm;
-//             let t = n >> (mm + 1);
+            for i in 0..h {
+                let w = inverse_table[h + i];
+                let w_prime = inverse_table_prime[h + i];
+                let op = it.next().unwrap();
 
-//             let mut it = operand.chunks_exact_mut(2 * t);
+                for j in 0..t {
+                    let x = op[j];
+                    let y = op[t + j];
+                    let t_tmp = two_times_modulus - y + x;
+                    let curr_x = x + y - (two_times_modulus * (((x << 1) >= t_tmp) as u64));
+                    let h_tmp = (t_tmp * w_prime) >> 32;
 
-//             for i in 0..h {
-//                 let w = inverse_table[h + i];
-//                 let w_prime = inverse_table_prime[h + i];
+                    let res_x = (curr_x + (modulus * ((t_tmp & 1) as u64))) >> 1;
+                    let res_y = w * t_tmp - h_tmp * modulus;
 
-//                 let op = it.next().unwrap();
+                    op[j] = res_x;
+                    op[t + j] = res_y;
+                }
+            }
+        }
 
-//                 for j in 0..t {
-//                     let x = op[j];
-//                     let y = op[t + j];
-
-//                     let t_tmp = two_times_modulus - y + x;
-//                     let curr_x = x + y - (two_times_modulus * (((x << 1) >= t_tmp) as u64));
-//                     let h_tmp = (t_tmp * w_prime) >> 32;
-
-//                     let res_x = (curr_x + (modulus * ((t_tmp & 1) as u64))) >> 1;
-//                     let res_y = w * t_tmp - h_tmp * modulus;
-
-//                     op[j] = res_x;
-//                     op[t + j] = res_y;
-//                 }
-//             }
-//         }
-
-//         for i in 0..n {
-//             operand[i] -= ((operand[i] >= two_times_modulus) as u64) * two_times_modulus;
-//             operand[i] -= ((operand[i] >= modulus) as u64) * modulus;
-//         }
-//     }
-// }
+        for i in 0..n {
+            operand[i] -= ((operand[i] >= two_times_modulus) as u64) * two_times_modulus;
+            operand[i] -= ((operand[i] >= modulus) as u64) * modulus;
+        }
+    }
+}
 
 pub fn ntt_inverse_alt(params: &Params, operand_overall: &mut [u64]) {
     for coeff_mod in 0..params.crt_count {
@@ -564,6 +560,7 @@ pub fn ntt_inverse_256(params: &Params, operand_overall: &mut [u64]) {
     }
 }
 
+#[cfg(target_feature = "avx2")]
 pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
     if params.crt_count == 1 {
         ntt_inverse_alt(params, operand_overall);
