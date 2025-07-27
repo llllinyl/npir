@@ -443,6 +443,97 @@ pub fn modular_reduce(params: &Params, res: &mut [u64]) {
 }
 
 #[cfg(target_feature = "avx2")]
+pub fn multiply_vec(res: &mut [PolyMatrixNTT], a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
+    assert_eq!(res.len(), a.rows);
+    assert_eq!(res[0].cols, b.cols);
+    assert_eq!(a.cols, b.rows);
+
+    let params = res[0].params;
+    let poly_len = params.poly_len;
+    let crt_count = params.crt_count;
+
+    let barrett_consts = unsafe {
+        [
+            _mm256_set1_epi64x(params.barrett_cr_1[0] as i64),
+            _mm256_set1_epi64x(params.barrett_cr_1[1] as i64)
+        ]
+    };
+    let moduli = unsafe {
+        [
+            _mm256_set1_epi64x(params.moduli[0] as i64),
+            _mm256_set1_epi64x(params.moduli[1] as i64)
+        ]
+    };
+
+    for i in 0..a.rows {
+        for j in 0..b.cols {
+            let res_poly = res[i].get_poly_mut(0, j);
+            unsafe {
+                for z in (0..poly_len * crt_count).step_by(4) {
+                    _mm256_store_si256(
+                        res_poly.as_mut_ptr().add(z) as *mut __m256i,
+                        _mm256_setzero_si256()
+                    );
+                }
+            }
+
+            for k in 0..a.cols {
+                let pol1 = a.get_poly(i, k);
+                let pol2 = b.get_poly(k, j);
+                unsafe {
+                        for c in 0..crt_count {
+                        let c_offset = c * poly_len;
+                        let reduce = 1 << (64 - 2 * params.moduli[c].ilog2() as usize - 3);
+                        for i in (0..poly_len).step_by(4) {
+                            let idx = c_offset + i;
+                            let p_x = pol1.as_ptr().add(idx);
+                            let p_y = pol2.as_ptr().add(idx);
+                            let p_z = res_poly.as_mut_ptr().add(idx);
+
+                            let x = _mm256_loadu_si256(p_x as *const __m256i);
+                            let y = _mm256_loadu_si256(p_y as *const __m256i);
+                            let z = _mm256_loadu_si256(p_z as *const __m256i);
+
+                            let product = _mm256_mul_epu32(x, y);
+                            let mut sum = _mm256_add_epi64(z, product);
+                            
+                            if k % reduce == 0 || k == a.cols - 1 {
+                                sum = avx2_barrett_reduction(sum, barrett_consts[c], moduli[c]);
+                            }
+                            _mm256_storeu_si256(p_z as *mut __m256i, sum);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(target_feature = "avx2"))]
+pub fn multiply_vec(res: &mut [PolyMatrixNTT], a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
+    assert_eq!(res.len(), a.rows);
+    assert_eq!(res[0].cols, b.cols);
+    assert_eq!(a.cols, b.rows);
+
+
+    let params = res[0].params;
+    for i in 0..a.rows {
+        for j in 0..b.cols {
+            for z in 0..params.poly_len * params.crt_count {
+                res[i].get_poly_mut(0, j)[z] = 0;
+            }
+            for k in 0..a.cols {
+                let res_poly = res[i].get_poly_mut(0, j);
+                let pol1 = a.get_poly(i, k);
+                let pol2 = b.get_poly(k, j);
+                multiply_add_poly(params, res_poly, pol1, pol2);
+            }
+        }
+    }
+}
+
+
+#[cfg(target_feature = "avx2")]
 pub fn multiply(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
     assert_eq!(res.rows, a.rows);
     assert_eq!(res.cols, b.cols);
