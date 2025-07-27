@@ -1,4 +1,3 @@
-use crate::{params::*};
 use rand::{prelude::SmallRng, thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
@@ -11,15 +10,6 @@ pub fn calc_index(indices: &[usize], lengths: &[usize]) -> usize {
         prod *= lengths[i];
     }
     idx
-}
-
-pub fn get_test_params() -> Params {
-    Params::init(2048, 
-        &[786433, 1004535809], 
-        2.05, 
-        1,
-        64, 
-        33,)
 }
 
 pub fn get_seed() -> u64 {
