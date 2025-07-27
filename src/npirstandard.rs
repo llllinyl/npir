@@ -243,6 +243,7 @@ impl<'a> Npir<'a> {
     }
 
     pub fn answercompressed(&self, column_cipher: PolyMatrixNTT<'a>, rotation_cipher: PolyMatrixNTT<'_>) -> Vec<PolyMatrixRaw<'_>> {
+        let dimension = self.ntru_params.poly_len;
         let mut total_time = 0;
         let uncompress_time = Instant::now();
         let uncom_cipher = self.uncompress(column_cipher);
@@ -251,8 +252,10 @@ impl<'a> Npir<'a> {
         total_time += uncompress_time.elapsed().as_micros();
         
         let start_time = Instant::now();
-        let mut processed_db = PolyMatrixNTT::zero(self.ntru_params, self.drows, 1);
-        multiply(&mut processed_db, &self.db, &query);
+        let mut processed_db_vec: Vec<PolyMatrixNTT> = (0..self.drows)
+            .map(|_| PolyMatrixNTT::zero(self.ntru_params, 1, 1))
+            .collect();
+        multiply_vec(&mut processed_db_vec, &self.db, &query);
         println!("simplePIR processing time: {} μs", start_time.elapsed().as_micros());
         total_time += start_time.elapsed().as_micros();
 
@@ -261,14 +264,7 @@ impl<'a> Npir<'a> {
         for block_idx in 0..self.phi {
             let block_start_time = Instant::now();
             
-            let mut block_data = Vec::with_capacity(self.ntru_params.poly_len);
-            for i in 0..self.ntru_params.poly_len {
-                block_data.push(processed_db.submatrix(
-                    self.ntru_params.poly_len * block_idx + i, 
-                    0, 
-                    1, 
-                    1));
-            }
+            let block_data = &db_res[(block_idx * dimension)..=(block_idx * dimension + dimension - 1)];
     
             let packed_block = self.ntrurp.packing_for(
                 self.ntru_params.poly_len_log2,
