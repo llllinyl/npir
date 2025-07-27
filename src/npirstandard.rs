@@ -1,6 +1,6 @@
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use crate::{discrete_gaussian::*, ntrupacking::*, poly::*, params::*, number_theory::*, arith::*};
+use crate::{discrete_gaussian::*, aligned_memory::*, ntt::*, ntrupacking::*, poly::*, params::*, number_theory::*, arith::*};
 use std::time::Instant;
 
 
@@ -636,13 +636,13 @@ mod tests {
     }
 
     #[test]
-    //#[ignore]
+    #[ignore]
     fn npir_256mb_correctness() {
         npir_test(31);
     }
 
     #[test]
-    #[ignore]
+    //#[ignore]
     fn npir_256mb_pack_correctness() {
         npir_pack_test(31,1);
     }
@@ -678,7 +678,7 @@ mod tests {
     }
 
     #[test]
-    //#[ignore]
+    #[ignore]
     fn npir_1gb_32kb_correctness() {
         npir_large_test(33,16);
     }
