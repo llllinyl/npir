@@ -39,8 +39,8 @@ pub fn randomdb<'a>(params: &'a Params,  db_raw: &mut PolyMatrixRaw<'a>) {
     let dimension = params.poly_len;
     let pt = params.pt_modulus;
 
-    for i in 0..db.rows {
-        for j in 0..db.cols {
+    for i in 0..db_raw.rows {
+        for j in 0..db_raw.cols {
             for k in 0..dimension{
                 db_raw.get_poly_mut(i, j)[k] = rng.gen::<u64>().rem_euclid(pt);
             }
