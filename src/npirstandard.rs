@@ -8,6 +8,8 @@ pub struct Npir<'a> {
     pub ntru_params: &'a Params,
     pub ntrurp: NtruRp<'a>,
     pub db: PolyMatrixNTT<'a>,
+    pub pack: bool,
+    pub db_pack: Vec<AlignedMemory64<u64>>,
     pub db_raw: PolyMatrixSmall<'a>,
     pub n1: u64,
     pub r1: u64,
@@ -53,8 +55,76 @@ pub fn randomdb<'a>(params: &'a Params,  db_raw: &mut PolyMatrixSmall<'a>) {
     println!("========================================================================================");
 }
 
+pub fn pack_db<'a>(params: &'a Params, db_raw: PolyMatrixSmall<'a>) -> Vec<AlignedMemory64<u64>> {
+    let mut db_vec = Vec::with_capacity(db_raw.rows);
+    let cols = db_raw.cols;
+    let dimension = params.poly_len;
+    
+    for r in 0..db_raw.rows {
+        let mut packed_row = AlignedMemory64::<u64>::new(cols * dimension);
+        
+        for c in 0..cols {
+            let pol_src = db_raw.get_poly(r, c);
+            let mut pol_ntt: Vec<u64> = vec![0; dimension * 2];
+            
+            reduce_copy_small(params, &mut pol_ntt, pol_src);
+            ntt_forward(params, &mut pol_ntt);
+
+            for i in 0..dimension {
+                let idx_packed = c * dimension + i;
+                packed_row[idx_packed] = pol_ntt[i] | (pol_ntt[i + dimension] << 32);
+            }
+        }
+        db_vec.push(packed_row);
+    }
+    db_vec
+}
+
+pub fn db_multiply_query<'a>(params: &'a Params, 
+        db: &[AlignedMemory64<u64>], query: &PolyMatrixNTT) -> Vec<PolyMatrixNTT<'a>> {
+    let mut res = Vec::with_capacity(db.len());
+    let poly_len = params.poly_len;
+
+    for db_row in db {
+        let mut res_poly = PolyMatrixNTT::zero(params, 1, 1);
+        let result_poly = res_poly.get_poly_mut(0, 0);
+
+        for query_row in 0..query.rows {
+            let query_poly = query.get_poly(query_row, 0);
+
+            for z in 0..poly_len {
+                let idx_packed = query_row * poly_len + z;
+                let packed = db_row[idx_packed];
+                
+                let db_lo = packed as u32 as u64;
+                let db_hi = (packed >> 32) as u32 as u64;
+
+                let idx_res = z;
+                result_poly[idx_res] = multiply_add_modular(
+                    params,
+                    query_poly[idx_res],
+                    db_lo,
+                    result_poly[idx_res],
+                    0,
+                );
+
+                let idx_res = poly_len + z;
+                result_poly[idx_res] = multiply_add_modular(
+                    params,
+                    query_poly[idx_res],
+                    db_hi,
+                    result_poly[idx_res],
+                    1,
+                );
+            }
+        }
+        res.push(res_poly);
+    }
+    res
+}
+
 impl<'a> Npir<'a> {
-    pub fn new(ntru_params: &'a Params, packing_number: usize, tpk: usize, tg: usize, tce: usize) -> Npir<'a> {
+    pub fn new(ntru_params: &'a Params, pack: bool, packing_number: usize, tpk: usize, tg: usize, tce: usize) -> Npir<'a> {
         let ntrurp = NtruRp::new(ntru_params,tpk);
         let plaintext_modulus = ntru_params.pt_modulus as f64;
         let plaintext_bit = plaintext_modulus.log2() as usize;
@@ -105,7 +175,15 @@ impl<'a> Npir<'a> {
         let mut db_raw = PolyMatrixSmall::zero(ntru_params, drows, ell);
         randomdb(ntru_params, &mut db_raw);
         let init = Instant::now();
-        let db = to_ntt_alloc_small(&db_raw);
+        let (db, db_pack) = if !pack {
+            let db = to_ntt_alloc_small(&db_raw);
+            let db_pack = vec![AlignedMemory64::<u64>::new(1)];
+            (db, db_pack)
+        } else {
+            let db = PolyMatrixNTT::zero(ntru_params, 1, 1);
+            let db_pack = pack_db(ntru_params, db_raw.clone());
+            (db, db_pack)
+        };
         println!("Server prep. time: {} μs", init.elapsed().as_micros());
         println!("========================================================================================");
         
@@ -120,6 +198,8 @@ impl<'a> Npir<'a> {
             ntru_params,
             ntrurp,
             db,
+            pack,
+            db_pack,
             db_raw,
             n1,
             r1,
@@ -252,10 +332,16 @@ impl<'a> Npir<'a> {
         total_time += uncompress_time.elapsed().as_micros();
         
         let start_time = Instant::now();
-        let mut processed_db_vec: Vec<PolyMatrixNTT> = (0..self.drows)
-            .map(|_| PolyMatrixNTT::zero(self.ntru_params, 1, 1))
-            .collect();
-        multiply_vec(&mut processed_db_vec, &self.db, &query);
+        let db_res = if !self.pack {
+            let mut processed_db_vec: Vec<PolyMatrixNTT> = (0..self.drows)
+                .map(|_| PolyMatrixNTT::zero(self.ntru_params, 1, 1))
+                .collect();
+            multiply_vec(&mut processed_db_vec, &self.db, &query);
+            processed_db_vec
+        } else {
+            let db_res = db_multiply_query(self.ntru_params, &self.db_pack, &query);
+            db_res
+        };
         println!("simplePIR processing time: {} μs", start_time.elapsed().as_micros());
         total_time += start_time.elapsed().as_micros();
 
@@ -415,7 +501,7 @@ pub fn npir_test(databaselog: usize) {
         256, 
         databaselog,);
     println!("Generate the database with size 2^{} ...", ntru_params.db_size_log); 
-    let npir = Npir::new(&ntru_params, 1, 3, 5, 8);
+    let npir = Npir::new(&ntru_params, false, 1, 3, 5, 8);
 
     println!("The database has {} rows and {} cols.", npir.drows, npir.ell); 
     let dimension = ntru_params.poly_len;
@@ -456,7 +542,49 @@ pub fn npir_large_test(databaselog: usize, phi: usize) {
         256,
         databaselog,);
     println!("Generate the database with size 2^{} ...", ntru_params.db_size_log);
-    let npir = Npir::new(&ntru_params, phi, 3, 5, 8);
+    let npir = Npir::new(&ntru_params, false, phi, 3, 5, 8);
+
+    println!("The database has {} rows and {} cols.", npir.drows, npir.ell);
+    let dimension = ntru_params.poly_len;
+    let mut rng = ChaCha20Rng::from_entropy();
+    let mut micro_total = 0;
+    for _t in 0..6 {
+        let index_c = rng.gen::<usize>() % (ntru_params.poly_len * npir.ell);
+        println!("Query the data at {} column ...", index_c);
+        let (column, rotate) = npir.compress_query(index_c);
+
+
+        println!("Server computes the answer ...");
+        let start1 = Instant::now();
+        let ans = npir.answercompressed(column, rotate);
+        let duration1 = start1.elapsed();
+        let micros1 = duration1.as_micros();
+        if _t != 0 {
+            micro_total += micros1;
+        }
+        println!("Server time: {} μs", micros1);
+
+        let b = npir.recovery(&ans);
+        for i in 0..phi {
+            for j in 0..dimension{
+                assert_eq!(b[i].get_poly(0, 0)[j], npir.db_raw.get_poly(i * dimension + j, index_c / dimension)[index_c % dimension] as u64);
+            }
+        }
+        println!("Extract correctly!");
+        println!("########################################################################################");
+    }
+    println!("Server ave time: {} μs", micro_total / 5);
+}
+
+pub fn npir_pack_test(databaselog: usize, phi: usize) {
+    let ntru_params = Params::init(2048,
+        &[23068673, 1004535809],
+        2.05,
+        1,
+        256,
+        databaselog,);
+    println!("Generate the database with size 2^{} ...", ntru_params.db_size_log);
+    let npir = Npir::new(&ntru_params, true, phi, 3, 5, 8);
 
     println!("The database has {} rows and {} cols.", npir.drows, npir.ell);
     let dimension = ntru_params.poly_len;
@@ -511,6 +639,12 @@ mod tests {
     //#[ignore]
     fn npir_256mb_correctness() {
         npir_test(31);
+    }
+
+    #[test]
+    #[ignore]
+    fn npir_256mb_pack_correctness() {
+        npir_pack_test(31,1);
     }
 
     #[test]
