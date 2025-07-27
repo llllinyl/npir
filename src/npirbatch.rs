@@ -264,6 +264,7 @@ impl<'a> BatchNpir<'a> {
 
     pub fn answercompressed(&self, column_cipher: &[PolyMatrixNTT<'_>], 
     rotation_cipher: &[PolyMatrixNTT<'_>], batchsize: usize) -> Vec<PolyMatrixRaw<'_>> {
+        let dimension = self.ntru_params.poly_len;
         let db = &self.db;
         let mut total_time = 0;
         let uncompress_time = Instant::now();
@@ -271,27 +272,22 @@ impl<'a> BatchNpir<'a> {
         let query = self.queryrecovery(rotation_cipher, &uncom_cipher, batchsize);
         println!("query recovery time: {} μs", uncompress_time.elapsed().as_micros());
         total_time += uncompress_time.elapsed().as_micros();
-        
+
         let phi = self.phi;
         let mut answer_blocks = Vec::with_capacity(phi * batchsize);
         for idx in 0..batchsize {
             let start_time = Instant::now();
-            let mut processed_db = PolyMatrixNTT::zero(self.ntru_params, self.drows, 1);
-            multiply(&mut processed_db, &db, &query[idx]);
+            let mut processed_db_vec: Vec<PolyMatrixNTT> = (0..self.drows)
+                .map(|_| PolyMatrixNTT::zero(self.ntru_params, 1, 1))
+                .collect();
+            multiply_vec(&mut processed_db_vec, db, &query[idx]);
             println!("simplePIR processing time: {} μs", start_time.elapsed().as_micros());
             total_time += start_time.elapsed().as_micros();
 
             for block_idx in 0..phi {
                 let block_start_time = Instant::now();
-                
-                let mut block_data = Vec::with_capacity(self.ntru_params.poly_len);
-                for i in 0..self.ntru_params.poly_len {
-                    block_data.push(processed_db.submatrix(
-                        self.ntru_params.poly_len * block_idx + i, 
-                        0, 
-                        1, 
-                        1));
-                }
+
+                let block_data = &processed_db_vec[(block_idx * dimension)..=(block_idx * dimension + dimension - 1)];
         
                 let packed_block = self.ntrurp.packing_for(
                     self.ntru_params.poly_len_log2,
