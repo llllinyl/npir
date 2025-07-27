@@ -2,47 +2,6 @@ use crate::{arith::*, ntt::*, number_theory::*};
 
 pub const MAX_MODULI: usize = 4;
 
-pub static MIN_Q2_BITS: u64 = 14;
-pub static Q2_VALUES: [u64; 37] = [
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    12289,
-    12289,
-    61441,
-    65537,
-    65537,
-    520193,
-    786433,
-    786433,
-    3604481,
-    7340033,
-    16515073,
-    33292289,
-    67043329,
-    132120577,
-    268369921,
-    469762049,
-    1073479681,
-    2013265921,
-    4293918721,
-    8588886017,
-    17175674881,
-    34359214081,
-    68718428161,
-];
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct Params {
     pub poly_len: usize,
@@ -117,11 +76,7 @@ impl Params {
         for i in 0..crt_count {
             moduli_array[i] = moduli[i];
         }
-        let ntt_tables = if crt_count > 1 {
-            build_ntt_tables(poly_len, moduli, None)
-        } else {
-            build_ntt_tables_alt(poly_len, moduli, None)
-        };
+        let ntt_tables = build_ntt_tables(poly_len, moduli, None);
         let scratch = vec![0u64; crt_count * poly_len];
         let mut modulus = 1;
         for m in moduli {
@@ -158,4 +113,3 @@ impl Params {
         }
     }
 }
-
