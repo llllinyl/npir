@@ -65,7 +65,7 @@ pub fn pack_db<'a>(params: &'a Params, db_raw: PolyMatrixSmall<'a>) -> Vec<Align
     
     for r in 0..db_raw.rows {
         let mut packed_row = AlignedMemory64::<u64>::new(cols * dimension);
-        
+
         for c in 0..cols {
             let pol_src = db_raw.get_poly(r, c);
             let mut pol_ntt: Vec<u64> = vec![0; dimension * 2];
@@ -692,7 +692,7 @@ mod tests {
     }
 
     #[test]
-    // #[ignore]
+    #[ignore]
     fn npir_256mb_pack_correctness() {
         npir_pack_test(31,1);
     }
@@ -800,7 +800,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    //#[ignore]
     fn npir_32gb_32kb_pack_correctness() {
         npir_pack_test(38,16);
     }
