@@ -1,6 +1,10 @@
+#[cfg(target_feature = "avx2")]
+use std::arch::x86_64::*;
+
+
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use crate::{discrete_gaussian::*, ntrupacking::*, poly::*, params::*, number_theory::*, arith::*};
+use crate::{discrete_gaussian::*, aligned_memory::*, ntt::*, ntrupacking::*, poly::*, params::*, number_theory::*, arith::*};
 use std::time::Instant;
 
 
@@ -8,7 +12,9 @@ pub struct BatchNpir<'a> {
     pub ntru_params: &'a Params,
     pub ntrurp: NtruRp<'a>,
     pub db: PolyMatrixNTT<'a>,
-    pub db_raw: PolyMatrixRaw<'a>,
+    pub pack: bool,
+    pub db_pack: Vec<AlignedMemory64<u64>>,
+    pub db_raw: PolyMatrixSmall<'a>,
     pub n1: u64,
     pub r1: u64,
     pub drows: usize,
@@ -34,7 +40,7 @@ pub fn multiply_x_inverse<'a>(params: &'a Params, k: usize,input: PolyMatrixRaw<
     output
 }
 
-pub fn randomdb<'a>(params: &'a Params,  db_raw: &mut PolyMatrixRaw<'a>) {
+pub fn randomdb<'a>(params: &'a Params,  db_raw: &mut PolyMatrixSmall<'a>) {
     let mut rng = ChaCha20Rng::from_entropy();
     let dimension = params.poly_len;
     let pt = params.pt_modulus;
@@ -42,14 +48,168 @@ pub fn randomdb<'a>(params: &'a Params,  db_raw: &mut PolyMatrixRaw<'a>) {
     for i in 0..db_raw.rows {
         for j in 0..db_raw.cols {
             for k in 0..dimension{
-                db_raw.get_poly_mut(i, j)[k] = rng.gen::<u64>().rem_euclid(pt);
+                db_raw.get_poly_mut(i, j)[k] = rng.gen::<u16>().rem_euclid(pt as u16);
             }
         }
     }
+    println!("Finish the database!");
+    println!("========================================================================================");
+}
+
+pub fn pack_db<'a>(params: &'a Params, db_raw: PolyMatrixSmall<'a>) -> Vec<AlignedMemory64<u64>> {
+    let mut db_vec = Vec::with_capacity(db_raw.rows);
+    let cols = db_raw.cols;
+    let dimension = params.poly_len;
+    
+    for r in 0..db_raw.rows {
+        let mut packed_row = AlignedMemory64::<u64>::new(cols * dimension);
+        
+        for c in 0..cols {
+            let pol_src = db_raw.get_poly(r, c);
+            let mut pol_ntt: Vec<u64> = vec![0; dimension * 2];
+            
+            reduce_copy_small(params, &mut pol_ntt, pol_src);
+            ntt_forward(params, &mut pol_ntt);
+
+            for i in 0..dimension {
+                let idx_packed = c * dimension + i;
+                packed_row[idx_packed] = pol_ntt[i] | (pol_ntt[i + dimension] << 32);
+            }
+        }
+        db_vec.push(packed_row);
+    }
+    db_vec
+}
+
+#[cfg(target_feature = "avx2")]
+pub fn db_multiply_query<'a>(params: &'a Params, 
+        db: &[AlignedMemory64<u64>], query: &PolyMatrixNTT) -> Vec<PolyMatrixNTT<'a>> {
+    let dimension = params.poly_len;
+    let crt_count = params.crt_count;
+    let mut res = Vec::with_capacity(db.len());
+    let rows = query.rows;
+
+    let barrett_consts = unsafe {
+        [
+            _mm256_set1_epi64x(params.barrett_cr_1[0] as i64),
+            _mm256_set1_epi64x(params.barrett_cr_1[1] as i64)
+        ]
+    };
+    let moduli = unsafe {
+        [
+            _mm256_set1_epi64x(params.moduli[0] as i64),
+            _mm256_set1_epi64x(params.moduli[1] as i64)
+        ]
+    };
+
+    for db_row in db {
+        let mut res_poly = PolyMatrixNTT::zero(params, 1, 1);
+        let result_poly = res_poly.get_poly_mut(0, 0);
+
+        unsafe {
+            for z in (0..dimension * crt_count).step_by(4) {
+                _mm256_storeu_si256(
+                    result_poly.as_mut_ptr().add(z) as *mut __m256i,
+                _mm256_setzero_si256(),
+                );
+            }
+        }
+
+        for query_row in 0..rows {
+            let query_poly = query.get_poly(query_row, 0);
+
+            unsafe {
+                for z in (0..dimension).step_by(4) {
+                    let idx_packed_base = query_row * dimension + z;
+                    let packed0 = db_row[idx_packed_base];
+                    let packed1 = db_row[idx_packed_base + 1];
+                    let packed2 = db_row[idx_packed_base + 2];
+                    let packed3 = db_row[idx_packed_base + 3];
+
+                    let db_lo = _mm256_set_epi64x(
+                        (packed3 >> 32) as i64,
+                        (packed2 >> 32) as i64,
+                        (packed1 >> 32) as i64,
+                        (packed0 >> 32) as i64,
+                    );
+                    let db_hi = _mm256_set_epi64x(
+                        (packed3 as u32) as i64,
+                        (packed2 as u32) as i64,
+                        (packed1 as u32) as i64,
+                        (packed0 as u32) as i64,
+                    );
+
+                    for c in 0..crt_count {
+                        let reduce = 1 << (64 - 2 * params.moduli[c].ilog2() as usize - 3);
+                        let c_offset = c * dimension;
+                        let idx_res = c_offset + z;
+
+                        let query_vec = _mm256_loadu_si256(query_poly.as_ptr().add(idx_res) as *const __m256i);
+                        let mut res_vec = _mm256_loadu_si256(result_poly.as_mut_ptr().add(idx_res) as *const __m256i);
+
+                        let db_part = if c == 0 { db_hi } else { db_lo };
+                        let product = _mm256_mul_epu32(query_vec, db_part);
+                        res_vec = _mm256_add_epi64(res_vec, product);
+
+                        if query_row % reduce == 0 || query_row == rows - 1 {
+                            res_vec = avx2_barrett_reduction(res_vec, barrett_consts[c], moduli[c]);
+                        }
+                        _mm256_storeu_si256(result_poly.as_mut_ptr().add(idx_res) as *mut __m256i, res_vec);
+                    }
+                }
+            }
+        }
+        res.push(res_poly);
+    }
+    res
+}
+
+#[cfg(not(target_feature = "avx2"))]
+pub fn db_multiply_query<'a>(params: &'a Params, 
+        db: &[AlignedMemory64<u64>], query: &PolyMatrixNTT) -> Vec<PolyMatrixNTT<'a>> {
+    let mut res = Vec::with_capacity(db.len());
+    let dimension = params.poly_len;
+
+    for db_row in db {
+        let mut res_poly = PolyMatrixNTT::zero(params, 1, 1);
+        let result_poly = res_poly.get_poly_mut(0, 0);
+
+        for query_row in 0..query.rows {
+            let query_poly = query.get_poly(query_row, 0);
+
+            for z in 0..dimension {
+                let idx_packed = query_row * dimension + z;
+                let packed = db_row[idx_packed];
+                
+                let db_lo = packed as u32 as u64;
+                let db_hi = (packed >> 32) as u32 as u64;
+
+                let idx_res = z;
+                result_poly[idx_res] = multiply_add_modular(
+                    params,
+                    query_poly[idx_res],
+                    db_lo,
+                    result_poly[idx_res],
+                    0,
+                );
+
+                let idx_res = idx_res + dimension;
+                result_poly[idx_res] = multiply_add_modular(
+                    params,
+                    query_poly[idx_res],
+                    db_hi,
+                    result_poly[idx_res],
+                    1,
+                );
+            }
+        }
+        res.push(res_poly);
+    }
+    res
 }
 
 impl<'a> BatchNpir<'a> {
-    pub fn new(ntru_params: &'a Params, packing_number: usize, tpk: usize, tg: usize, tce: usize) -> BatchNpir<'a> {
+    pub fn new(ntru_params: &'a Params, pack: bool, packing_number: usize, tpk: usize, tg: usize, tce: usize) -> BatchNpir<'a> {
         let ntrurp = NtruRp::new(ntru_params,tpk);
         let plaintext_modulus = ntru_params.pt_modulus as f64;
         let plaintext_bit = plaintext_modulus.log2() as usize;
@@ -96,10 +256,18 @@ impl<'a> BatchNpir<'a> {
             cek.push(tem_cek);
         }
 
-        let mut db_raw = PolyMatrixRaw::zero(ntru_params, drows, ell);
+        let mut db_raw = PolyMatrixSmall::zero(ntru_params, drows, ell);
         randomdb(ntru_params, &mut db_raw);
         let init = Instant::now();
-        let db = to_ntt_alloc(&db_raw);
+        let (db, db_pack) = if !pack {
+            let db = to_ntt_alloc_small(&db_raw);
+            let db_pack = vec![AlignedMemory64::<u64>::new(1)];
+            (db, db_pack)
+        } else {
+            let db = PolyMatrixNTT::zero(ntru_params, 1, 1);
+            let db_pack = pack_db(ntru_params, db_raw.clone());
+            (db, db_pack)
+        };
         println!("Server prep. time: {} μs", init.elapsed().as_micros());
         println!("========================================================================================");
 
@@ -107,6 +275,8 @@ impl<'a> BatchNpir<'a> {
             ntru_params,
             ntrurp,
             db,
+            pack,
+            db_pack,
             db_raw,
             n1,
             r1,
@@ -265,7 +435,6 @@ impl<'a> BatchNpir<'a> {
     pub fn answercompressed(&self, column_cipher: &[PolyMatrixNTT<'_>], 
     rotation_cipher: &[PolyMatrixNTT<'_>], batchsize: usize) -> Vec<PolyMatrixRaw<'_>> {
         let dimension = self.ntru_params.poly_len;
-        let db = &self.db;
         let mut total_time = 0;
         let uncompress_time = Instant::now();
         let uncom_cipher = self.uncompress(column_cipher, batchsize);
@@ -277,17 +446,23 @@ impl<'a> BatchNpir<'a> {
         let mut answer_blocks = Vec::with_capacity(phi * batchsize);
         for idx in 0..batchsize {
             let start_time = Instant::now();
-            let mut processed_db_vec: Vec<PolyMatrixNTT> = (0..self.drows)
-                .map(|_| PolyMatrixNTT::zero(self.ntru_params, 1, 1))
-                .collect();
-            multiply_vec(&mut processed_db_vec, db, &query[idx]);
+            let db_res = if !self.pack {
+                let mut processed_db_vec: Vec<PolyMatrixNTT> = (0..self.drows)
+                    .map(|_| PolyMatrixNTT::zero(self.ntru_params, 1, 1))
+                    .collect();
+                multiply_vec(&mut processed_db_vec, &self.db, &query[idx]);
+                processed_db_vec
+            } else {
+                let db_res = db_multiply_query(self.ntru_params, &self.db_pack, &query[idx]);
+                db_res
+            };
             println!("simplePIR processing time: {} μs", start_time.elapsed().as_micros());
             total_time += start_time.elapsed().as_micros();
 
             for block_idx in 0..phi {
                 let block_start_time = Instant::now();
 
-                let block_data = &processed_db_vec[(block_idx * dimension)..=(block_idx * dimension + dimension - 1)];
+                let block_data = &db_res[(block_idx * dimension)..=(block_idx * dimension + dimension - 1)];
         
                 let packed_block = self.ntrurp.packing_for(
                     self.ntru_params.poly_len_log2,
@@ -335,7 +510,7 @@ pub fn batch_npir_test(databaselog: usize, batchsize: usize) {
         256, 
         databaselog,);
     println!("Generate the database with size 2^{} ...", ntru_params.db_size_log); 
-    let batchnpir = BatchNpir::new(&ntru_params, 1, 3, 5, 8);
+    let batchnpir = BatchNpir::new(&ntru_params, false, 1, 3, 5, 8);
 
     let dimension = ntru_params.poly_len;
     let totalcolumn = batchnpir.ell * batchsize;
@@ -350,10 +525,6 @@ pub fn batch_npir_test(databaselog: usize, batchsize: usize) {
     println!("Query size: {:.2} KB", (modbit * dimension * (ctnum + batchnpir.tg * batchsize)) as f64 / 1024.0 as f64);
     println!("Response size: {:.2} KB", (mod0bit * dimension * batchnpir.phi * batchsize) as f64 / 1024.0 as f64);
     println!("========================================================================================");
-    
-
-
-
     println!("The database has {} rows and {} cols.", batchnpir.drows, batchnpir.ell); 
     let mut rng = ChaCha20Rng::from_entropy();
     for _t in 0..6 {
@@ -372,7 +543,57 @@ pub fn batch_npir_test(databaselog: usize, batchsize: usize) {
         for idx in 0..batchsize {
             for i in 0..1 {
                 for j in 0..dimension{
-                    assert_eq!(b[idx * 1 + i].get_poly(0, 0)[j], batchnpir.db_raw.get_poly(i * dimension + j, index_c[idx] / dimension)[index_c[idx] % dimension]);
+                    assert_eq!(b[idx * 1 + i].get_poly(0, 0)[j] as u16, batchnpir.db_raw.get_poly(i * dimension + j, index_c[idx] / dimension)[index_c[idx] % dimension]);
+                }
+            }
+            println!("Batch {}: Extract correctly!", idx);           
+        }
+        println!("########################################################################################");
+    }
+}
+
+pub fn batch_npir_pack_test(databaselog: usize, batchsize: usize) {
+    let ntru_params = Params::init(2048, 
+        &[23068673, 1004535809], 
+        2.05,
+        1,
+        256, 
+        databaselog,);
+    println!("Generate the database with size 2^{} ...", ntru_params.db_size_log); 
+    let batchnpir = BatchNpir::new(&ntru_params, true, 1, 3, 5, 8);
+
+    let dimension = ntru_params.poly_len;
+    let totalcolumn = batchnpir.ell * batchsize;
+    let ctnum = (totalcolumn as f64 / dimension as f64).ceil() as usize;
+    let modbit = ((ntru_params.modulus as f64).log2() / 8.00 as f64).ceil() as usize;
+    let mod0bit = ((ntru_params.moduli[0] as f64).log2() / 8.00 as f64).ceil() as usize;
+    let pbsize = if ctnum == 0 { 
+        (modbit * dimension * ((totalcolumn as f64).log2().ceil() as usize * batchnpir.tce + ntru_params.poly_len_log2 * batchnpir.ntrurp.tpk)) as f64 / 8192.0 as f64 } 
+    else { 
+        (modbit * dimension * ntru_params.poly_len_log2 * (batchnpir.tce + batchnpir.ntrurp.tpk)) as f64 / 1024.0 as f64 };
+    println!("Public parameters size: {:.2} KB", pbsize);
+    println!("Query size: {:.2} KB", (modbit * dimension * (ctnum + batchnpir.tg * batchsize)) as f64 / 1024.0 as f64);
+    println!("Response size: {:.2} KB", (mod0bit * dimension * batchnpir.phi * batchsize) as f64 / 1024.0 as f64);
+    println!("========================================================================================");
+    println!("The database has {} rows and {} cols.", batchnpir.drows, batchnpir.ell); 
+    let mut rng = ChaCha20Rng::from_entropy();
+    for _t in 0..6 {
+        let mut index_c = Vec::with_capacity(batchsize);
+        for idx in 0..batchsize{
+            index_c.push(rng.gen::<usize>() % (ntru_params.poly_len * batchnpir.ell));
+            println!("Query the data at {}-th column ...", index_c[idx]);
+        }
+
+        let (column, rotate) = batchnpir.compress_query(&index_c, batchsize);
+
+        println!("Server computes the answer ...");
+        let ans = batchnpir.answercompressed(&column, &rotate, batchsize);
+
+        let b = batchnpir.recovery(&ans, batchsize);
+        for idx in 0..batchsize {
+            for i in 0..1 {
+                for j in 0..dimension{
+                    assert_eq!(b[idx * 1 + i].get_poly(0, 0)[j] as u16, batchnpir.db_raw.get_poly(i * dimension + j, index_c[idx] / dimension)[index_c[idx] % dimension]);
                 }
             }
             println!("Batch {}: Extract correctly!", idx);           
@@ -386,10 +607,17 @@ mod tests {
     use super::*;
 
     #[test]
-    // #[ignore]
+    #[ignore]
     fn batchnpir_256mb_4_correctness() {
         batch_npir_test(31, 4);
     }
+
+    #[test]
+    // #[ignore]
+    fn batchnpir_256mb_4_pack_correctness() {
+        batch_npir_pack_test(31, 4);
+    }
+
 
     #[test]
     #[ignore]
@@ -399,8 +627,21 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn batchnpir_256mb_32_pack_correctness() {
+        batch_npir_pack_test(31, 32);
+    }
+
+
+    #[test]
+    #[ignore]
     fn batchnpir_256mb_256_correctness() {
         batch_npir_test(31, 256);
+    }
+
+    #[test]
+    #[ignore]
+    fn batchnpir_256mb_256_pack_correctness() {
+        batch_npir_pack_test(31, 256);
     }
 
 
@@ -412,13 +653,31 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn batchnpir_1gb_4_pack_correctness() {
+        batch_npir_pack_test(33, 4);
+    }
+
+    #[test]
+    #[ignore]
     fn batchnpir_1gb_32_correctness() {
         batch_npir_test(33, 32);
     }
 
     #[test]
     #[ignore]
+    fn batchnpir_1gb_32_pack_correctness() {
+        batch_npir_pack_test(33, 32);
+    }
+
+    #[test]
+    #[ignore]
     fn batchnpir_1gb_256_correctness() {
         batch_npir_test(33, 256);
+    }
+
+    #[test]
+    #[ignore]
+    fn batchnpir_1gb_256_pack_correctness() {
+        batch_npir_pack_test(33, 256);
     }
 }
