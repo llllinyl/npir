@@ -688,6 +688,25 @@ pub fn multiply_no_reduce(
 }
 
 #[cfg(not(target_feature = "avx2"))]
+pub fn multiply_no_reduce(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
+    assert!(res.rows == a.rows);
+    assert!(res.cols == b.cols);
+    assert!(a.cols == b.rows);
+
+    let params = res.params;
+    for i in 0..a.rows {
+        for j in 0..b.cols {
+            let res_poly = res.get_poly_mut(i, j);
+            for k in start_inner_dim..a.cols {
+                let pol1 = a.get_poly(i, k);
+                let pol2 = b.get_poly(k, j);
+                multiply_add_poly(params, res_poly, pol1, pol2);
+            }
+        }
+    }
+}
+
+#[cfg(not(target_feature = "avx2"))]
 pub fn multiply(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
     assert!(res.rows == a.rows);
     assert!(res.cols == b.cols);
