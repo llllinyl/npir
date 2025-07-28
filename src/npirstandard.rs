@@ -1,3 +1,6 @@
+#[cfg(target_feature = "avx2")]
+use std::arch::x86_64::*;
+
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use crate::{discrete_gaussian::*, aligned_memory::*, ntt::*, ntrupacking::*, poly::*, params::*, number_theory::*, arith::*};
@@ -80,10 +83,94 @@ pub fn pack_db<'a>(params: &'a Params, db_raw: PolyMatrixSmall<'a>) -> Vec<Align
     db_vec
 }
 
+#[cfg(target_feature = "avx2")]
+pub fn db_multiply_query<'a>(params: &'a Params, 
+        db: &[AlignedMemory64<u64>], query: &PolyMatrixNTT) -> Vec<PolyMatrixNTT<'a>> {
+    let dimension = params.poly_len;
+    let crt_count = params.crt_count;
+    let mut res = Vec::with_capacity(db.len());
+    let rows = query.rows;
+
+    let barrett_consts = unsafe {
+        [
+            _mm256_set1_epi64x(params.barrett_cr_1[0] as i64),
+            _mm256_set1_epi64x(params.barrett_cr_1[1] as i64)
+        ]
+    };
+    let moduli = unsafe {
+        [
+            _mm256_set1_epi64x(params.moduli[0] as i64),
+            _mm256_set1_epi64x(params.moduli[1] as i64)
+        ]
+    };
+
+    for db_row in db {
+        let mut res_poly = PolyMatrixNTT::zero(params, 1, 1);
+        let result_poly = res_poly.get_poly_mut(0, 0);
+
+        unsafe {
+            for z in (0..dimension * crt_count).step_by(4) {
+                _mm256_storeu_si256(
+                    result_poly.as_mut_ptr().add(z) as *mut __m256i,
+                _mm256_setzero_si256(),
+                );
+            }
+        }
+
+        for query_row in 0..rows {
+            let query_poly = query.get_poly(query_row, 0);
+
+            unsafe {
+                for z in (0..dimension).step_by(4) {
+                    let idx_packed_base = query_row * dimension + z;
+                    let packed0 = db_row[idx_packed_base];
+                    let packed1 = db_row[idx_packed_base + 1];
+                    let packed2 = db_row[idx_packed_base + 2];
+                    let packed3 = db_row[idx_packed_base + 3];
+
+                    let db_lo = _mm256_set_epi64x(
+                        (packed3 >> 32) as i64,
+                        (packed2 >> 32) as i64,
+                        (packed1 >> 32) as i64,
+                        (packed0 >> 32) as i64,
+                    );
+                    let db_hi = _mm256_set_epi64x(
+                        (packed3 as u32) as i64,
+                        (packed2 as u32) as i64,
+                        (packed1 as u32) as i64,
+                        (packed0 as u32) as i64,
+                    );
+
+                    for c in 0..crt_count {
+                        let reduce = 1 << (64 - 2 * params.moduli[c].ilog2() as usize - 3);
+                        let c_offset = c * dimension;
+                        let idx_res = c_offset + z;
+
+                        let query_vec = _mm256_loadu_si256(query_poly.as_ptr().add(idx_res) as *const __m256i);
+                        let mut res_vec = _mm256_loadu_si256(result_poly.as_mut_ptr().add(idx_res) as *const __m256i);
+
+                        let db_part = if c == 0 { db_hi } else { db_lo };
+                        let product = _mm256_mul_epu32(query_vec, db_part);
+                        res_vec = _mm256_add_epi64(res_vec, product);
+
+                        if query_row % reduce == 0 || query_row == rows - 1 {
+                            res_vec = avx2_barrett_reduction(res_vec, barrett_consts[c], moduli[c]);
+                        }
+                        _mm256_storeu_si256(result_poly.as_mut_ptr().add(idx_res) as *mut __m256i, res_vec);
+                    }
+                }
+            }
+        }
+        res.push(res_poly);
+    }
+    res
+}
+
+#[cfg(not(target_feature = "avx2"))]
 pub fn db_multiply_query<'a>(params: &'a Params, 
         db: &[AlignedMemory64<u64>], query: &PolyMatrixNTT) -> Vec<PolyMatrixNTT<'a>> {
     let mut res = Vec::with_capacity(db.len());
-    let poly_len = params.poly_len;
+    let dimension = params.poly_len;
 
     for db_row in db {
         let mut res_poly = PolyMatrixNTT::zero(params, 1, 1);
@@ -92,8 +179,8 @@ pub fn db_multiply_query<'a>(params: &'a Params,
         for query_row in 0..query.rows {
             let query_poly = query.get_poly(query_row, 0);
 
-            for z in 0..poly_len {
-                let idx_packed = query_row * poly_len + z;
+            for z in 0..dimension {
+                let idx_packed = query_row * dimension + z;
                 let packed = db_row[idx_packed];
                 
                 let db_lo = packed as u32 as u64;
@@ -108,7 +195,7 @@ pub fn db_multiply_query<'a>(params: &'a Params,
                     0,
                 );
 
-                let idx_res = poly_len + z;
+                let idx_res = idx_res + dimension;
                 result_poly[idx_res] = multiply_add_modular(
                     params,
                     query_poly[idx_res],
@@ -450,49 +537,6 @@ impl<'a> Npir<'a> {
     }
 }
 
-/*
-pub fn npirfree_test(databaselog: usize) {
-    let ntru_params = Params::init(2048, 
-        &[23068673, 1004535809], 
-        2.05, 
-        1,
-        256, 
-        databaselog,);
-    println!("Generate the database with size 2^{} ...", ntru_params.db_size_log); 
-    let npir = Npir::new(&ntru_params, 1, 3, 35, 8); // The second input is \phi; the third is t_pk; the fourth is t_g; the fifth is t_ce
-
-    println!("The database has {} rows and {} cols.", npir.drows, npir.ell); 
-    let dimension = ntru_params.poly_len;
-    let mut rng = ChaCha20Rng::from_entropy();
-    let mut micro_total = 0;
-    for _t in 0..6 {
-        let index_c = rng.gen::<usize>() % (ntru_params.poly_len * npir.ell);
-        println!("Query the data at {}-th column ...", index_c);
-        let query = npir.query(index_c);
-
-        println!("Server computes the answer ...");
-        let start1 = Instant::now();
-        let ans: Vec<PolyMatrixRaw> = npir.answer(query);
-        let duration1 = start1.elapsed();
-        let micros1 = duration1.as_micros();
-        if _t != 0 {
-            micro_total += micros1;
-        }
-        println!("Server time: {} μs", micros1);
-
-        let b = npir.recovery(&ans);
-        for i in 0..1 {
-            for j in 0..dimension{
-                assert_eq!(b[i].get_poly(0, 0)[j], npir.db_raw.get_poly(i * dimension + j, index_c / dimension)[index_c % dimension]);
-            }
-        }
-        println!("Extract correctly!");
-        println!("########################################################################################");
-    }
-    println!("Server ave time: {} μs", micro_total / 5);
-}
-*/
-
 pub fn npir_test(databaselog: usize) {
     let ntru_params = Params::init(2048, 
         &[23068673, 1004535809],
@@ -631,6 +675,12 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn npir_64mb_pack_correctness() {
+        npir_pack_test(29,1);
+    }
+
+    #[test]
+    #[ignore]
     fn npir_128mb_correctness() {
         npir_test(30);
     }
@@ -642,7 +692,7 @@ mod tests {
     }
 
     #[test]
-    //#[ignore]
+    // #[ignore]
     fn npir_256mb_pack_correctness() {
         npir_pack_test(31,1);
     }
@@ -661,6 +711,12 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn npir_1gb_pack_correctness() {
+        npir_pack_test(33,1);
+    }
+
+    #[test]
+    #[ignore]
     fn npir_2gb_correctness() {
         npir_test(34);
     }
@@ -669,6 +725,12 @@ mod tests {
     #[ignore]
     fn npir_4gb_correctness() {
         npir_test(35);
+    }
+
+    #[test]
+    #[ignore]
+    fn npir_4gb_pack_correctness() {
+        npir_pack_test(35,1);
     }
 
     #[test]
@@ -685,6 +747,12 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn npir_1gb_32kb_pack_correctness() {
+        npir_pack_test(33,16);
+    }
+
+    #[test]
+    #[ignore]
     fn npir_2gb_32kb_correctness() {
         npir_large_test(34,16);
     }
@@ -697,8 +765,20 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn npir_4gb_32kb_pack_correctness() {
+        npir_pack_test(35,16);
+    }
+
+    #[test]
+    #[ignore]
     fn npir_8gb_32kb_correctness() {
         npir_large_test(36,16);
+    }
+
+    #[test]
+    #[ignore]
+    fn npir_8gb_32kb_pack_correctness() {
+        npir_pack_test(36,16);
     }
 
     #[test]
@@ -709,7 +789,19 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn npir_16gb_32kb_pack_correctness() {
+        npir_pack_test(37,16);
+    }
+
+    #[test]
+    #[ignore]
     fn npir_32gb_32kb_correctness() {
         npir_large_test(38,16);
+    }
+
+    #[test]
+    #[ignore]
+    fn npir_32gb_32kb_pack_correctness() {
+        npir_pack_test(38,16);
     }
 }
