@@ -22,5 +22,8 @@ After building the code, we can run the following command to run the test:
 5. If you want to test the NPIR scheme, invoke `RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture npirstandard`. You can test different data sets in the `npirstandard.rs` file `test` module for both small and moderate-size records.
 6. If you want to test the batch version, invoke `RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture npirbatch`. You can test different data sets in the `npirbatch.rs` file `test` module.
 
+## Note
+During testing, it was found that some CPUs occasionally report invalid memory errors. In such cases, simply re-running the test is all that is required. However, we have not yet been able to determine why some CPUs are affected and others are not.
+
 ## Acknowledgements
 We use the [menonsamir/spiral-rs](https://github.com/menonsamir/spiral-rs) library for Spiral as our starting point.
