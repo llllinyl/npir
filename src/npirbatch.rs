@@ -613,7 +613,7 @@ mod tests {
     }
 
     #[test]
-    // #[ignore]
+    #[ignore]
     fn batchnpir_256mb_4_pack_correctness() {
         batch_npir_pack_test(31, 4);
     }
@@ -626,7 +626,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    //#[ignore]
     fn batchnpir_256mb_32_pack_correctness() {
         batch_npir_pack_test(31, 32);
     }
