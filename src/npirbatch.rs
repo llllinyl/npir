@@ -439,7 +439,7 @@ impl<'a> BatchNpir<'a> {
         let uncompress_time = Instant::now();
         let uncom_cipher = self.uncompress(column_cipher, batchsize);
         let query = self.queryrecovery(rotation_cipher, &uncom_cipher, batchsize);
-        println!("query recovery time: {} μs", uncompress_time.elapsed().as_micros());
+        //println!("query recovery time: {} μs", uncompress_time.elapsed().as_micros());
         total_time += uncompress_time.elapsed().as_micros();
 
         let phi = self.phi;
@@ -456,7 +456,7 @@ impl<'a> BatchNpir<'a> {
                 let db_res = db_multiply_query(self.ntru_params, &self.db_pack, &query[idx]);
                 db_res
             };
-            println!("simplePIR processing time: {} μs", start_time.elapsed().as_micros());
+            //println!("simplePIR processing time: {} μs", start_time.elapsed().as_micros());
             total_time += start_time.elapsed().as_micros();
 
             for block_idx in 0..phi {
@@ -474,7 +474,7 @@ impl<'a> BatchNpir<'a> {
                 let reduced_block = self.ntrurp.modreduction(raw_block);
                 
                 answer_blocks.push(reduced_block);
-                println!("Batch {} Block {} packing time: {} μs", idx, block_idx, block_start_time.elapsed().as_micros());
+                //println!("Batch {} Block {} packing time: {} μs", idx, block_idx, block_start_time.elapsed().as_micros());
                 total_time += block_start_time.elapsed().as_micros();
             }
         }
@@ -602,6 +602,56 @@ pub fn batch_npir_pack_test(databaselog: usize, batchsize: usize) {
     }
 }
 
+pub fn batch_npir_pack_large_test(databaselog: usize, batchsize: usize, phi: usize) {
+    let ntru_params = Params::init(2048,
+        &[23068673, 1004535809],
+        2.05,
+        1,
+        256,
+        databaselog,);
+    println!("Generate the database with size 2^{} ...", ntru_params.db_size_log);
+    let batchnpir = BatchNpir::new(&ntru_params, true, phi, 3, 5, 8);
+
+    let dimension = ntru_params.poly_len;
+    let totalcolumn = batchnpir.ell * batchsize;
+    let ctnum = (totalcolumn as f64 / dimension as f64).ceil() as usize;
+    let modbit = ((ntru_params.modulus as f64).log2() / 8.00 as f64).ceil() as usize;
+    let mod0bit = ((ntru_params.moduli[0] as f64).log2() / 8.00 as f64).ceil() as usize;
+    let pbsize = if ctnum == 0 {
+        (modbit * dimension * ((totalcolumn as f64).log2().ceil() as usize * batchnpir.tce + ntru_params.poly_len_log2 * batchnpir.ntrurp.tpk)) as f64 / 8192.0 as f64 }
+    else {
+        (modbit * dimension * ntru_params.poly_len_log2 * (batchnpir.tce + batchnpir.ntrurp.tpk)) as f64 / 1024.0 as f64 };
+    println!("Public parameters size: {:.2} KB", pbsize);
+    println!("Query size: {:.2} KB", (modbit * dimension * (ctnum + batchnpir.tg * batchsize)) as f64 / 1024.0 as f64);
+    println!("Response size: {:.2} KB", (mod0bit * dimension * batchnpir.phi * batchsize) as f64 / 1024.0 as f64);
+    println!("========================================================================================");
+    println!("The database has {} rows and {} cols.", batchnpir.drows, batchnpir.ell);
+    let mut rng = ChaCha20Rng::from_entropy();
+    for _t in 0..6 {
+        let mut index_c = Vec::with_capacity(batchsize);
+        for idx in 0..batchsize{
+            index_c.push(rng.gen::<usize>() % (ntru_params.poly_len * batchnpir.ell));
+            println!("Query the data at {}-th column ...", index_c[idx]);
+        }
+        let (column, rotate) = batchnpir.compress_query(&index_c, batchsize);
+
+        println!("Server computes the answer ...");
+        let ans = batchnpir.answercompressed(&column, &rotate, batchsize);
+
+        let b = batchnpir.recovery(&ans, batchsize);
+        for idx in 0..batchsize {
+            for i in 0..phi {
+                for j in 0..dimension{
+                    assert_eq!(b[idx * phi + i].get_poly(0, 0)[j] as u16, batchnpir.db_raw.get_poly(i * dimension + j, index_c[idx] / dimension)[index_c[idx] % dimension]);
+                }
+            }
+            //println!("Batch {}: Extract correctly!", idx);
+        }
+        println!("Extract correctly for all batch!");
+        println!("########################################################################################");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -626,11 +676,16 @@ mod tests {
     }
 
     #[test]
-    //#[ignore]
-    fn batchnpir_256mb_32_pack_correctness() {
-        batch_npir_pack_test(31, 32);
+    #[ignore]
+    fn batchnpir_1gb_8_pack_large_correctness() {
+        batch_npir_pack_large_test(33, 8, 16);
     }
 
+    #[test]
+    #[ignore]
+    fn batchnpir_1gb_32_pack_large_correctness() {
+        batch_npir_pack_large_test(33, 32, 16);
+    }
 
     #[test]
     #[ignore]
@@ -680,4 +735,17 @@ mod tests {
     fn batchnpir_1gb_256_pack_correctness() {
         batch_npir_pack_test(33, 256);
     }
+
+    #[test]
+    #[ignore]
+    fn batchnpir_8gb_8_pack_large_correctness() {
+        batch_npir_pack_large_test(36, 8, 16);
+    }
+
+    #[test]
+    //#[ignore]
+    fn batchnpir_8gb_32_pack_large_correctness() {
+        batch_npir_pack_large_test(36, 32, 16);
+    }
+
 }
