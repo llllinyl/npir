@@ -1,6 +1,6 @@
 # NPIR
 
-This is an Rust implementation of the NPIR scheme, introduiced in "\textsf{NPIR}".
+This is an Rust implementation of the NPIR scheme, introduiced in "\textsc{Npir}: High-Rate PIR for Databases with Moderate-Size Records".
 
 ## Build
 To build and run this code, we need some environmental needs and adjustments.
@@ -27,5 +27,6 @@ During testing, we found that some CPUs occasionally reported invalid memory err
 
 ## Acknowledgements
 We use the [menonsamir/spiral-rs](https://github.com/menonsamir/spiral-rs) library for Spiral as our starting point.
+
 
 
