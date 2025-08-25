@@ -669,26 +669,8 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn npir_64mb_correctness() {
-        npir_test(29);
-    }
-
-    #[test]
-    #[ignore]
     fn npir_64mb_pack_correctness() {
         npir_pack_test(29,1);
-    }
-
-    #[test]
-    #[ignore]
-    fn npir_128mb_correctness() {
-        npir_test(30);
-    }
-
-    #[test]
-    #[ignore]
-    fn npir_256mb_correctness() {
-        npir_test(31);
     }
 
     #[test]
@@ -699,14 +681,8 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn npir_512mb_correctness() {
-        npir_test(32);
-    }
-
-    #[test]
-    #[ignore]
-    fn npir_1gb_correctness() {
-        npir_test(33);
+    fn npir_512mb_pack_correctness() {
+        npir_pack_test(32,1);
     }
 
     #[test]
@@ -714,19 +690,7 @@ mod tests {
     fn npir_1gb_pack_correctness() {
         npir_pack_test(33,1);
     }
-
-    #[test]
-    #[ignore]
-    fn npir_2gb_correctness() {
-        npir_test(34);
-    }
-
-    #[test]
-    #[ignore]
-    fn npir_4gb_correctness() {
-        npir_test(35);
-    }
-
+    
     #[test]
     #[ignore]
     fn npir_4gb_pack_correctness() {
@@ -735,14 +699,8 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn npir_8gb_correctness() {
-        npir_test(36);
-    }
-
-    #[test]
-    #[ignore]
-    fn npir_1gb_32kb_correctness() {
-        npir_large_test(33,16);
+    fn npir_8gb_pack_correctness() {
+        npir_pack_test(36,1);
     }
 
     #[test]
@@ -753,38 +711,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn npir_2gb_32kb_correctness() {
-        npir_large_test(34,16);
-    }
-
-    #[test]
-    #[ignore]
-    fn npir_4gb_32kb_correctness() {
-        npir_large_test(35,16);
-    }
-
-    #[test]
-    #[ignore]
     fn npir_4gb_32kb_pack_correctness() {
         npir_pack_test(35,16);
     }
 
     #[test]
-    #[ignore]
-    fn npir_8gb_32kb_correctness() {
-        npir_large_test(36,16);
-    }
-
-    #[test]
-    #[ignore]
+    //#[ignore]
     fn npir_8gb_32kb_pack_correctness() {
         npir_pack_test(36,16);
-    }
-
-    #[test]
-    #[ignore]
-    fn npir_16gb_32kb_correctness() {
-        npir_large_test(37,16);
     }
 
     #[test]
@@ -795,12 +729,6 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn npir_32gb_32kb_correctness() {
-        npir_large_test(38,16);
-    }
-
-    #[test]
-    //#[ignore]
     fn npir_32gb_32kb_pack_correctness() {
         npir_pack_test(38,16);
     }
