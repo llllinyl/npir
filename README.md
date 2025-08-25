@@ -23,8 +23,9 @@ After building the code, we can run the following command to run the test:
 6. If you want to test the batch version, invoke `RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture npirbatch`. You can test different data sets in the `npirbatch.rs` file `test` module.
 
 ## Note
-During testing, we found that some CPUs occasionally reported invalid memory errors, while others did not. In such cases, simply re-running the test resolves the issue. However, we have not yet determined the reason why some CPUs are affected and others are not.
+During testing, we found that some CPUs occasionally reported invalid memory errors due to the function `pack_db` in files `npirstandard.rs` and `npirbatch.rs`, while others did not. In such cases, simply re-running the test resolves the issue. However, we have not yet determined the reason why some CPUs are affected and others are not.
 
 ## Acknowledgements
 We use the [menonsamir/spiral-rs](https://github.com/menonsamir/spiral-rs) library for Spiral as our starting point.
+
 
