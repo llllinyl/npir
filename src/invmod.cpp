@@ -17,14 +17,14 @@ extern "C" {
         poly = inv_poly = modulus = 0;
         SetCoeff(modulus, N, 1);
         SetCoeff(modulus, 0, 1);
-        static uniform_int_distribution<int> ternary_sampler(0, 1);
+        static uniform_int_distribution<int> binary_sampler(0, 1);
         int left = 0, right =0;
         static default_random_engine rand_engine(std::chrono::system_clock::now().time_since_epoch().count());
         while (true)
         {
             for (size_t i = 0; i < N; i++){
-                left = ternary_sampler(rand_engine);
-                right = ternary_sampler(rand_engine);
+                left = binary_sampler(rand_engine);
+                right = binary_sampler(rand_engine);
                 SetCoeff(poly, i, left - right);      
             {
                 InvMod(inv_poly, poly, modulus);
