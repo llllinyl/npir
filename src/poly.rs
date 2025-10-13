@@ -688,7 +688,7 @@ pub fn multiply_no_reduce(
 }
 
 #[cfg(not(target_feature = "avx2"))]
-pub fn multiply_no_reduce(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
+pub fn multiply_no_reduce(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT, start_inner_dim: usize,) {
     assert!(res.rows == a.rows);
     assert!(res.cols == b.cols);
     assert!(a.cols == b.rows);
