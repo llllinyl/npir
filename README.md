@@ -20,10 +20,10 @@ After building the code, we can run the following command to run the test:
 3. The module `libinvmod.so` needs to be imported before running to invoke `export LD_LIBRARY_PATH={your_path}/npir/src:$LD_LIBRARY_PATH`. It is worth noting that there is a path that needs to be modified here.
 4. If you want to test packing, invoke ```RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture ntrupacking::tests::[module]```. You can choose between a recursive implementation or a non-recursive implementation in your tests (use module= `test_packing` or `test_for_packing`).
 5. If you want to test the NPIR scheme, invoke ```RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture npirstandard::tests::[module]```. You can test different data sets in the `npirstandard.rs` file `test` module for both small and moderate-size records:
-      (a) use module= `testbatch_[x]_2kb` where the database size x=64mb/256mb/512mb/1gb/2gb/4gb/8gb for small records;
-      (b) use module= `testbatch_[x]_32kb` where the database size x=1gb/2gb/4gb/8gb/16gb/32gb for moderate-size records;
-      (c) use module= `testbatch_[x]_128kb` where the database size x=1gb/8gb for large records;
-      (d) use module= `testbatch_8gb_[y]` where the record size y=2kb/4kb/8kb/16kb/32kb/64kb/128kb for varying record sizes.
+      * use module= `testbatch_[x]_2kb` where the database size x=64mb/256mb/512mb/1gb/2gb/4gb/8gb for small records;
+      + use module= `testbatch_[x]_32kb` where the database size x=1gb/2gb/4gb/8gb/16gb/32gb for moderate-size records;
+      + use module= `testbatch_[x]_128kb` where the database size x=1gb/8gb for large records;
+      + use module= `testbatch_8gb_[y]` where the record size y=2kb/4kb/8kb/16kb/32kb/64kb/128kb for varying record sizes.
 7. If you want to test the batch version, invoke ```RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture npirbatch::tests::[module]```. You can test different data sets in the `npirbatch.rs` file `test` module (use module= `testbatch_[x]gb_[y]` where the database size x=1/8 and the batch size y=8/32).
 
 ## Note
@@ -31,6 +31,7 @@ During testing, we found that some CPUs occasionally reported invalid memory err
 
 ## Acknowledgements
 We use the [menonsamir/spiral-rs](https://github.com/menonsamir/spiral-rs) library for Spiral as our starting point.
+
 
 
 
