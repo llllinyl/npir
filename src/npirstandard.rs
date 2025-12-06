@@ -668,68 +668,104 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore]
-    fn npir_64mb_pack_correctness() {
+    //#[ignore]
+    fn test_64mb_2kb() {
         npir_pack_test(29,1);
     }
 
     #[test]
-    #[ignore]
-    fn npir_256mb_pack_correctness() {
+    //#[ignore]
+    fn test_256mb_2kb() {
         npir_pack_test(31,1);
     }
 
     #[test]
-    #[ignore]
-    fn npir_512mb_pack_correctness() {
+    //#[ignore]
+    fn test_512mb_2kb() {
         npir_pack_test(32,1);
     }
 
     #[test]
-    #[ignore]
-    fn npir_1gb_pack_correctness() {
+    //#[ignore]
+    fn test_1gb_2kb() {
         npir_pack_test(33,1);
     }
     
     #[test]
-    #[ignore]
-    fn npir_4gb_pack_correctness() {
+    //#[ignore]
+    fn test_4gb_2kb() {
         npir_pack_test(35,1);
     }
 
     #[test]
-    #[ignore]
-    fn npir_8gb_pack_correctness() {
+    //#[ignore]
+    fn test_8gb_2kb() {
         npir_pack_test(36,1);
     }
 
     #[test]
-    #[ignore]
-    fn npir_1gb_32kb_pack_correctness() {
+    //#[ignore]
+    fn test_1gb_32kb() {
         npir_pack_test(33,16);
     }
 
     #[test]
-    #[ignore]
-    fn npir_4gb_32kb_pack_correctness() {
+    //#[ignore]
+    fn test_4gb_32kb() {
         npir_pack_test(35,16);
     }
 
     #[test]
     //#[ignore]
-    fn npir_8gb_32kb_pack_correctness() {
+    fn test_8gb_32kb() {
         npir_pack_test(36,16);
     }
 
     #[test]
-    #[ignore]
-    fn npir_16gb_32kb_pack_correctness() {
+    //#[ignore]
+    fn test_16gb_32kb() {
         npir_pack_test(37,16);
     }
 
     #[test]
-    #[ignore]
-    fn npir_32gb_32kb_pack_correctness() {
+    //#[ignore]
+    fn test_32gb_32kb() {
         npir_pack_test(38,16);
+    }
+
+    #[test]
+    //#[ignore]
+    fn test_8gb_4kb() {
+        npir_pack_test(36,2);
+    }
+
+    #[test]
+    //#[ignore]
+    fn test_8gb_8kb() {
+        npir_pack_test(36,4);
+    }
+
+    #[test]
+    //#[ignore]
+    fn test_8gb_16kb() {
+        npir_pack_test(36,8);
+    }
+
+    #[test]
+    //#[ignore]
+    fn test_8gb_64kb() {
+        npir_pack_test(36,32);
+    }
+
+    #[test]
+    //#[ignore]
+    fn test_1gb_128kb() {
+        npir_pack_test(33,64);
+    }
+
+    #[test]
+    //#[ignore]
+    fn test_8gb_128kb() {
+        npir_pack_test(36,64);
     }
 }
