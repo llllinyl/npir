@@ -690,6 +690,12 @@ mod tests {
     fn test_1gb_2kb() {
         npir_pack_test(33,1);
     }
+
+    #[test]
+    //#[ignore]
+    fn test_2gb_2kb() {
+        npir_pack_test(34,1);
+    }
     
     #[test]
     //#[ignore]
@@ -707,6 +713,12 @@ mod tests {
     //#[ignore]
     fn test_1gb_32kb() {
         npir_pack_test(33,16);
+    }
+
+    #[test]
+    //#[ignore]
+    fn test_2gb_32kb() {
+        npir_pack_test(34,16);
     }
 
     #[test]
