@@ -439,7 +439,7 @@ mod tests {
 
     #[test]
     //#[ignore]
-    fn packing_correctness() {
+    fn test_packing() {
         let ntru_params = Params::init(2048, 
             // &[5767169, 2013265921], 
             &[23068673, 1004535809], 
@@ -482,7 +482,7 @@ mod tests {
 
     #[test]
     // #[ignore]
-    fn packing_for_correctness() {
+    fn test_for_packing() {
         let ntru_params = Params::init(2048, 
             &[23068673, 1004535809], 
             2.05, 
