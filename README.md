@@ -18,7 +18,7 @@ After building the code, we can run the following command to run the test:
 1. If the `libinvmod.so` file does, you need to call `g++ -shared -fPIC -o libinvmod.so invmod.cpp -lntl -lgmp` to generate it.
 2. Files can be compiled via `cargo build --release`.
 3. The module `libinvmod.so` needs to be imported before running to invoke `export LD_LIBRARY_PATH={your_path}/npir/src:$LD_LIBRARY_PATH`. It is worth noting that there is a path that needs to be modified here.
-4. If you want to test packing, invoke `RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture ntrupacking`. You can choose between a recursive implementation or a non-recursive implementation in your tests.
+4. If you want to test packing, invoke `RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture ntrupacking::tests::[module]`. You can choose between a recursive implementation or a non-recursive implementation in your tests (module= 'test_packing' or 'test_for_packing').
 5. If you want to test the NPIR scheme, invoke `RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture npirstandard`. You can test different data sets in the `npirstandard.rs` file `test` module for both small and moderate-size records.
 6. If you want to test the batch version, invoke `RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture npirbatch`. You can test different data sets in the `npirbatch.rs` file `test` module.
 
@@ -27,6 +27,7 @@ During testing, we found that some CPUs occasionally reported invalid memory err
 
 ## Acknowledgements
 We use the [menonsamir/spiral-rs](https://github.com/menonsamir/spiral-rs) library for Spiral as our starting point.
+
 
 
 
