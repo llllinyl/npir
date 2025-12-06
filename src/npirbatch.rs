@@ -655,65 +655,28 @@ pub fn batch_npir_pack_large_test(databaselog: usize, batchsize: usize, phi: usi
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    #[ignore]
-    fn batchnpir_256mb_4_pack_correctness() {
-        batch_npir_pack_test(31, 4);
-    }
-
-    #[test]
-    #[ignore]
-    fn batchnpir_256mb_32_pack_correctness() {
-        batch_npir_pack_test(31, 32);
-    }
-
-    #[test]
-    #[ignore]
-    fn batchnpir_256mb_256_pack_correctness() {
-        batch_npir_pack_test(31, 256);
-    }
-
-    #[test]
-    #[ignore]
-    fn batchnpir_1gb_4_pack_correctness() {
-        batch_npir_pack_test(33, 4);
-    }
-
-    #[test]
-    #[ignore]
-    fn batchnpir_1gb_32_pack_correctness() {
-        batch_npir_pack_test(33, 32);
-    }
-
-    #[test]
-    #[ignore]
-    fn batchnpir_1gb_256_pack_correctness() {
-        batch_npir_pack_test(33, 256);
-    }
-
-    
+  
     #[test]
     //#[ignore]
-    fn batchnpir_1gb_8_pack_large_correctness() {
+    fn testbatch_1gb_8() {
         batch_npir_pack_large_test(33, 8, 16);
     }
 
     #[test]
-    #[ignore]
-    fn batchnpir_1gb_32_pack_large_correctness() {
+    //#[ignore]
+    fn testbatch_1gb_32() {
         batch_npir_pack_large_test(33, 32, 16);
     }
 
     #[test]
-    #[ignore]
-    fn batchnpir_8gb_8_pack_large_correctness() {
+    //#[ignore]
+    fn testbatch_8gb_8() {
         batch_npir_pack_large_test(36, 8, 16);
     }
 
     #[test]
-    #[ignore]
-    fn batchnpir_8gb_32_pack_large_correctness() {
+    //#[ignore]
+    fn testbatch_8gb_32() {
         batch_npir_pack_large_test(36, 32, 16);
     }
 
