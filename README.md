@@ -23,7 +23,7 @@ After building the code, we can run the following command to run the test:
       * use module= `test_[x]_2kb` where the database size `x=64mb/256mb/512mb/1gb/2gb/4gb/8gb` for small records;
       + use module= `test_[x]_32kb` where the database size `x=1gb/2gb/4gb/8gb/16gb/32gb` for moderate-size records;
       + use module= `test_[x]_128kb` where the database size `x=1gb/8gb` for large records;
-      + use module= `test_[y]` where the record size `y=2kb/4kb/8kb/16kb/32kb/64kb/128kb` for varying record sizes.
+      + use module= `test_8gb_[y]` where the record size `y=2kb/4kb/8kb/16kb/32kb/64kb/128kb` for varying record sizes.
 7. If you want to test the batch version, invoke ```RUSTFLAGS="-C target-cpu=native" cargo test --release -- --nocapture npirbatch::tests::[module]```. You can test different data sets in the `npirbatch.rs` file `test` module (use module= `testbatch_[x]gb_[y]` where the database size `x=1/8` and the batch size `y=8/32`).
 
 ## Note
@@ -31,6 +31,7 @@ During testing, we found that some CPUs occasionally reported invalid memory err
 
 ## Acknowledgements
 We use the NTT module of [menonsamir/spiral-rs](https://github.com/menonsamir/spiral-rs) library for Spiral.
+
 
 
 
