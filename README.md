@@ -32,10 +32,6 @@ During testing, we found that some CPUs occasionally reported invalid memory err
 ## Acknowledgements
 We use the NTT module of [menonsamir/spiral-rs](https://github.com/menonsamir/spiral-rs) library for Spiral.
 
-## License
-This implementation is provided for research and educational purposes only.
-Commercial use requires explicit permission from the authors.
-
 ## Citation
 To cite Qiyana in academic papers, please use the following entry:
 ```bibtex
@@ -47,6 +43,7 @@ To cite Qiyana in academic papers, please use the following entry:
       url = {https://eprint.iacr.org/2025/2257}
 }
 ```
+
 
 
 
