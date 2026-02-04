@@ -13,7 +13,7 @@ To build and run this code, we need some environmental needs and adjustments.
 4. We need to adjust the path in `build.rs` and change it to the local path of the current host.
 5. Our implementation requires the environment to support AVX2.
 
-## Run
+## Running Tests
 After building the code, we can run the following command to run the test:
 1. If the `libinvmod.so` file does, you need to call `g++ -shared -fPIC -o libinvmod.so invmod.cpp -lntl -lgmp` to generate it.
 2. Files can be compiled via `cargo build --release`.
@@ -31,6 +31,21 @@ During testing, we found that some CPUs occasionally reported invalid memory err
 
 ## Acknowledgements
 We use the NTT module of [menonsamir/spiral-rs](https://github.com/menonsamir/spiral-rs) library for Spiral.
+
+## License
+This implementation is provided for research and educational purposes only.
+Commercial use requires explicit permission from the authors.
+
+## Citation
+To cite Qiyana in academic papers, please use the following entry:
+```bibtex
+@misc{cryptoeprint:2025/2257,
+      author = {Yuliang Lin and Baosheng Wang and Yi Wang and Rongmao Chen},
+      title = {\textsc{Npir}: High-Rate {PIR} for Databases with Moderate-Size Records},
+      howpublished = {Cryptology {ePrint} Archive, Paper 2025/2257},
+      year = {2025},
+      url = {https://eprint.iacr.org/2025/2257}
+}
 
 
 
