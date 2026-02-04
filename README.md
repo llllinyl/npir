@@ -33,7 +33,7 @@ During testing, we found that some CPUs occasionally reported invalid memory err
 We use the NTT module of [menonsamir/spiral-rs](https://github.com/menonsamir/spiral-rs) library for Spiral.
 
 ## Citation
-To cite Qiyana in academic papers, please use the following entry:
+To cite \textsc{Npir} in academic papers, please use the following entry:
 ```bibtex
 @misc{cryptoeprint:2025/2257,
       author = {Yuliang Lin and Baosheng Wang and Yi Wang and Rongmao Chen},
@@ -43,6 +43,7 @@ To cite Qiyana in academic papers, please use the following entry:
       url = {https://eprint.iacr.org/2025/2257}
 }
 ```
+
 
 
 
